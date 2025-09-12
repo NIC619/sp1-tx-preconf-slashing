@@ -30,7 +30,20 @@ pub struct TransactionInclusionProof {
     pub verified_against_root: B256,
 }
 
-// Removed old MPT verification helper functions - now using alloy-trie's verify_proof
+// Import alloy-sol-types for ABI encoding
+use alloy_sol_types::SolType;
+
+// Define the Solidity-compatible struct for ABI encoding
+alloy_sol_types::sol! {
+    struct PublicValuesStruct {
+        bytes32 blockHash;
+        uint64 blockNumber;
+        bytes32 transactionHash;
+        uint64 transactionIndex;
+        bool isIncluded;
+        bytes32 verifiedAgainstRoot;
+    }
+}
 
 /// Verify Merkle Patricia Trie inclusion proof for transaction at precise index using alloy-trie
 fn verify_merkle_proof(key: &[u8], transaction_data: &[u8], proof: &[Bytes], root: B256) -> bool {
@@ -101,6 +114,16 @@ pub fn main() {
         verified_against_root: input.block_header.transactions_root,
     };
 
-    // Commit the proof to public values
-    sp1_zkvm::io::commit_slice(&bincode::serialize(&proof).unwrap());
+    // Create Solidity-compatible struct for ABI encoding
+    let solidity_public_values = PublicValuesStruct {
+        blockHash: proof.block_hash,
+        blockNumber: proof.block_number,
+        transactionHash: proof.transaction_hash,
+        transactionIndex: proof.transaction_index,
+        isIncluded: proof.is_included,
+        verifiedAgainstRoot: proof.verified_against_root,
+    };
+
+    // Commit ABI-encoded public values (compatible with Solidity)
+    sp1_zkvm::io::commit_slice(&PublicValuesStruct::abi_encode(&solidity_public_values));
 }

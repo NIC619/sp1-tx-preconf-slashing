@@ -18,9 +18,8 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 use sp1_sdk::{
     include_elf, HashableKey, ProverClient, SP1ProofWithPublicValues, SP1Stdin, SP1VerifyingKey,
-    network::FulfillmentStrategy,
+    network::FulfillmentStrategy, Prover,
 };
-use std::time::Duration;
 use std::path::PathBuf;
 use tx_inclusion_precise_index_lib::{
     generate_merkle_proof, TransactionInclusionInput, TransactionInclusionProof, INCLUDED_TX,
@@ -97,15 +96,7 @@ async fn main() -> Result<()> {
     println!("Generating EVM-compatible proof for transaction inclusion verification");
     println!("Proof System: {:?}", args.system);
 
-    // Setup the prover client based on mode
-    let client = if args.local {
-        ProverClient::from_env()
-    } else {
-        ProverClient::builder().network().build()
-    };
-
-    // Setup the program.
-    let (pk, vk) = client.setup(TX_INCLUSION_ELF);
+    // We'll handle setup and proving separately for each client type due to type differences
 
     // Get the transaction details
     let tx = provider
@@ -152,11 +143,14 @@ async fn main() -> Result<()> {
     stdin.write(&input_bytes);
 
     // Generate the proof based on the selected proof system and mode
-    let proof = if args.local {
+    let (proof, vk) = if args.local {
         println!("\nGenerating EVM-compatible proof locally...");
         println!("This requires significant resources (128GB RAM)");
         
-        match args.system {
+        let client = ProverClient::from_env();
+        let (pk, vk) = client.setup(TX_INCLUSION_ELF);
+        
+        let proof = match args.system {
             ProofSystem::Plonk => {
                 println!("Generating PLONK proof locally...");
                 client.prove(&pk, &stdin).plonk().run()
@@ -166,13 +160,18 @@ async fn main() -> Result<()> {
                 client.prove(&pk, &stdin).groth16().run()
             }
         }
-        .expect("failed to generate proof locally")
+        .expect("failed to generate proof locally");
+        
+        (proof, vk)
     } else {
         println!("\nGenerating EVM-compatible proof using Succinct Prover Network...");
         println!("Using {} proof system", match args.system {
             ProofSystem::Plonk => "PLONK",
             ProofSystem::Groth16 => "Groth16"
         });
+        
+        let client = ProverClient::builder().network().build();
+        let (pk, vk) = client.setup(TX_INCLUSION_ELF);
         
         let proof_future = match args.system {
             ProofSystem::Plonk => {
@@ -197,7 +196,8 @@ async fn main() -> Result<()> {
         println!("Waiting for network proof generation...");
         println!("=======================================\n");
         
-        proof_future.await.expect("failed to generate proof using network")
+        let proof = proof_future.await.expect("failed to generate proof using network");
+        (proof, vk)
     };
 
     if args.local {

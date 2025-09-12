@@ -5,12 +5,26 @@ use clap::Parser;
 use eyre::Result;
 use sp1_sdk::{include_elf, utils, ProverClient, SP1Stdin};
 use tx_inclusion_precise_index_lib::{
-    generate_merkle_proof, TransactionInclusionInput, TransactionInclusionProof, INCLUDED_TX,
+    generate_merkle_proof, TransactionInclusionInput, INCLUDED_TX,
 };
+
+// Import alloy-sol-types for ABI encoding
+use alloy_sol_types::SolType;
+
+// Define the Solidity-compatible struct for ABI decoding
+alloy_sol_types::sol! {
+    struct PublicValuesStruct {
+        bytes32 blockHash;
+        uint64 blockNumber;
+        bytes32 transactionHash;
+        uint64 transactionIndex;
+        bool isIncluded;
+        bytes32 verifiedAgainstRoot;
+    }
+}
 use url::Url;
 
 const ELF: &[u8] = include_elf!("tx-inclusion-precise-index-client");
-
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -97,22 +111,22 @@ async fn main() -> Result<()> {
             report.total_instruction_count()
         );
 
-        // Decode and display the proof result
-        let proof_result: TransactionInclusionProof = bincode::deserialize(output.as_slice())?;
+        // Decode the ABI-encoded output
+        let decoded = PublicValuesStruct::abi_decode(output.as_slice(), true)?;
 
         println!("\n=== EXECUTION RESULT ===");
-        println!("Block Hash: {}", proof_result.block_hash);
-        println!("Block Number: {}", proof_result.block_number);
-        println!("Transaction Hash: {}", proof_result.transaction_hash);
-        println!("Transaction Index: {}", proof_result.transaction_index);
-        println!("Is Included: {}", proof_result.is_included);
+        println!("Block Hash: 0x{}", hex::encode(decoded.blockHash.as_slice()));
+        println!("Block Number: {}", decoded.blockNumber);
+        println!("Transaction Hash: 0x{}", hex::encode(decoded.transactionHash.as_slice()));
+        println!("Transaction Index: {}", decoded.transactionIndex);
+        println!("Is Included: {}", decoded.isIncluded);
         println!(
-            "Verified Against Root: {}",
-            proof_result.verified_against_root
+            "Verified Against Root: 0x{}",
+            hex::encode(decoded.verifiedAgainstRoot.as_slice())
         );
 
         // Verify the result
-        if proof_result.is_included {
+        if decoded.isIncluded {
             println!("✅ SUCCESS: Transaction correctly proved as INCLUDED");
         } else {
             println!("❌ FAILURE: Transaction should be included but was marked as excluded");

@@ -17,8 +17,23 @@ use sp1_sdk::{
 };
 use std::path::PathBuf;
 use tx_inclusion_precise_index_lib::{
-    generate_merkle_proof, TransactionInclusionInput, TransactionInclusionProof, INCLUDED_TX,
+    generate_merkle_proof, TransactionInclusionInput, INCLUDED_TX,
 };
+
+// Import alloy-sol-types for ABI encoding
+use alloy_sol_types::SolType;
+
+// Define the Solidity-compatible struct for ABI decoding
+alloy_sol_types::sol! {
+    struct PublicValuesStruct {
+        bytes32 blockHash;
+        uint64 blockNumber;
+        bytes32 transactionHash;
+        uint64 transactionIndex;
+        bool isIncluded;
+        bytes32 verifiedAgainstRoot;
+    }
+}
 use url::Url;
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
@@ -162,46 +177,22 @@ async fn create_proof_fixture(
     vk: &SP1VerifyingKey,
     system: ProofSystem,
 ) -> Result<()> {
-    // Deserialize the public values from the ZK proof output
+    // The public values are now ABI-encoded, so we can decode them using Solidity struct
     let bytes = proof.public_values.as_slice();
-    let proof_result: TransactionInclusionProof = bincode::deserialize(bytes)?;
-
-    // Create Solidity-compatible ABI-encoded public values
-    // This must match the PublicValuesStruct in the Solidity contract
-    use alloy::sol_types::SolType;
     
-    alloy::sol! {
-        struct PublicValuesStruct {
-            bytes32 blockHash;
-            uint64 blockNumber;
-            bytes32 transactionHash;
-            uint64 transactionIndex;
-            bool isIncluded;
-            bytes32 verifiedAgainstRoot;
-        }
-    }
-    
-    let solidity_public_values = PublicValuesStruct {
-        blockHash: proof_result.block_hash.into(),
-        blockNumber: proof_result.block_number,
-        transactionHash: proof_result.transaction_hash.into(),
-        transactionIndex: proof_result.transaction_index,
-        isIncluded: proof_result.is_included,
-        verifiedAgainstRoot: proof_result.verified_against_root.into(),
-    };
-    
-    let abi_encoded_public_values = PublicValuesStruct::abi_encode(&solidity_public_values);
+    // Decode the ABI-encoded public values
+    let decoded = PublicValuesStruct::abi_decode(bytes, true)?;
 
     // Create the testing fixture so we can test things end-to-end.
     let fixture = SP1TransactionInclusionProofFixture {
-        block_hash: format!("0x{}", hex::encode(proof_result.block_hash.as_slice())),
-        block_number: proof_result.block_number,
-        transaction_hash: format!("0x{}", hex::encode(proof_result.transaction_hash.as_slice())),
-        transaction_index: proof_result.transaction_index,
-        is_included: proof_result.is_included,
-        verified_against_root: format!("0x{}", hex::encode(proof_result.verified_against_root.as_slice())),
+        block_hash: format!("0x{}", hex::encode(decoded.blockHash.as_slice())),
+        block_number: decoded.blockNumber,
+        transaction_hash: format!("0x{}", hex::encode(decoded.transactionHash.as_slice())),
+        transaction_index: decoded.transactionIndex,
+        is_included: decoded.isIncluded,
+        verified_against_root: format!("0x{}", hex::encode(decoded.verifiedAgainstRoot.as_slice())),
         vkey: vk.bytes32().to_string(),
-        public_values: format!("0x{}", hex::encode(abi_encoded_public_values)),
+        public_values: format!("0x{}", hex::encode(bytes)),  // Use raw ABI-encoded bytes
         proof: format!("0x{}", hex::encode(proof.bytes())),
     };
 
