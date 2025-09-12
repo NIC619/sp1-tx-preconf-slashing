@@ -17,6 +17,9 @@ struct PublicValuesStruct {
 /// @notice This contract implements verification of ZK proofs for transaction inclusion
 ///         at precise indices in Ethereum blocks using SP1.
 contract TransactionInclusionVerifier {
+    /// @notice The owner of the contract (deployer).
+    address public owner;
+
     /// @notice The address of the SP1 verifier contract.
     /// @dev This can either be a specific SP1Verifier for a specific version, or the
     ///      SP1VerifierGateway which can be used to verify proofs for any version of SP1.
@@ -36,7 +39,17 @@ contract TransactionInclusionVerifier {
         bool isIncluded
     );
 
+    /// @notice Event emitted when the verification key is updated
+    event VerificationKeyUpdated(bytes32 indexed oldVKey, bytes32 indexed newVKey);
+
+    /// @notice Modifier to restrict access to owner only
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
+
     constructor(address _verifier, bytes32 _txInclusionProgramVKey) {
+        owner = msg.sender; // Set deployer as owner
         verifier = _verifier;
         txInclusionProgramVKey = _txInclusionProgramVKey;
     }
@@ -121,5 +134,14 @@ contract TransactionInclusionVerifier {
             publicValues.isIncluded,
             publicValues.verifiedAgainstRoot
         );
+    }
+
+    /// @notice Update the verification key for the transaction inclusion program.
+    /// @dev Only the owner can call this function.
+    /// @param _newVKey The new verification key.
+    function updateVerificationKey(bytes32 _newVKey) external onlyOwner {
+        bytes32 oldVKey = txInclusionProgramVKey;
+        txInclusionProgramVKey = _newVKey;
+        emit VerificationKeyUpdated(oldVKey, _newVKey);
     }
 }

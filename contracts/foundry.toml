@@ -4,4 +4,12 @@ out = "out"
 libs = ["lib"]
 fs_permissions = [{ access = "read-write", path = "./" }]
 
+# RPC URLs
+[rpc_endpoints]
+sepolia = "https://ethereum-sepolia-rpc.publicnode.com"
+
+# Etherscan API keys
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
