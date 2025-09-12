@@ -1,92 +1,137 @@
-//! An end-to-end example of using the SP1 SDK to generate a proof of a program that can be executed
-//! or have a core proof generated.
-//!
-//! You can run this script using the following command:
-//! ```shell
-//! RUST_LOG=info cargo run --release -- --execute
-//! ```
-//! or
-//! ```shell
-//! RUST_LOG=info cargo run --release -- --prove
-//! ```
-
-use alloy_sol_types::SolType;
+use alloy::network::Ethereum;
+use alloy::providers::{Provider, RootProvider};
+use alloy_rpc_types::BlockId;
 use clap::Parser;
-use fibonacci_lib::PublicValuesStruct;
-use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
+use eyre::Result;
+use sp1_sdk::{include_elf, utils, ProverClient, SP1Stdin};
+use tx_inclusion_precise_index_lib::{
+    generate_merkle_proof, TransactionInclusionInput, TransactionInclusionProof, INCLUDED_TX,
+};
+use url::Url;
 
-/// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
-pub const FIBONACCI_ELF: &[u8] = include_elf!("fibonacci-program");
+const ELF: &[u8] = include_elf!("tx-inclusion-precise-index-client");
 
-/// The arguments for the command.
+
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[clap(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long)]
-    execute: bool,
-
-    #[arg(long)]
+    #[clap(long, conflicts_with = "execute")]
     prove: bool,
 
-    #[arg(long, default_value = "20")]
-    n: u32,
+    #[clap(long, default_value = "https://ethereum-rpc.publicnode.com")]
+    eth_rpc_url: Url,
+
+    #[clap(long, conflicts_with = "prove")]
+    execute: bool,
 }
 
-fn main() {
-    // Setup the logger.
-    sp1_sdk::utils::setup_logger();
+#[tokio::main]
+async fn main() -> Result<()> {
     dotenv::dotenv().ok();
+    utils::setup_logger();
 
-    // Parse the command line arguments.
     let args = Args::parse();
+    let provider = RootProvider::<Ethereum>::new_http(args.eth_rpc_url.clone());
 
-    if args.execute == args.prove {
+    println!("Running transaction inclusion at precise index proof test");
+
+    // Error handling if neither option is selected
+    if !args.execute && !args.prove {
         eprintln!("Error: You must specify either --execute or --prove");
         std::process::exit(1);
     }
 
-    // Setup the prover client.
+    println!("=== Testing transaction inclusion at precise index ===");
+
+    // Get the transaction details
+    let tx = provider
+        .get_transaction_by_hash(INCLUDED_TX.parse()?)
+        .await?
+        .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
+
+    let block_number = tx
+        .block_number
+        .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
+    let tx_index = tx
+        .transaction_index
+        .ok_or_else(|| eyre::eyre!("Transaction index not found"))? as u64;
+
+    println!(
+        "Transaction found in block: {}, index: {}",
+        block_number, tx_index
+    );
+
+    // Get the block with all transactions
+    let block = provider
+        .get_block(BlockId::Number(block_number.into()))
+        .await?
+        .ok_or_else(|| eyre::eyre!("Block not found"))?;
+
+    // Generate Merkle proof which includes the actual encoded transaction
+    let (merkle_proof, encoded_tx_bytes) =
+        generate_merkle_proof(&provider, block_number, tx_index).await?;
+
+    let input = TransactionInclusionInput {
+        block_header: block.header.clone().into(),
+        raw_transaction: encoded_tx_bytes,
+        transaction_index: tx_index,
+        merkle_proof,
+    };
+
+    // Serialize input
+    let input_bytes = bincode::serialize(&input)?;
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&input_bytes);
+
     let client = ProverClient::from_env();
 
-    // Setup the inputs.
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&args.n);
-
-    println!("n: {}", args.n);
-
     if args.execute {
-        // Execute the program
-        let (output, report) = client.execute(FIBONACCI_ELF, &stdin).run().unwrap();
-        println!("Program executed successfully.");
+        // Execution branch
+        println!("Executing SP1 program...");
+        let (output, report) = client
+            .execute(ELF, &stdin)
+            .run()
+            .map_err(|e| eyre::eyre!("Execution failed: {}", e))?;
+        println!(
+            "Program executed with {} cycles",
+            report.total_instruction_count()
+        );
 
-        // Read the output.
-        let decoded = PublicValuesStruct::abi_decode(output.as_slice()).unwrap();
-        let PublicValuesStruct { n, a, b } = decoded;
-        println!("n: {}", n);
-        println!("a: {}", a);
-        println!("b: {}", b);
+        // Decode and display the proof result
+        let proof_result: TransactionInclusionProof = bincode::deserialize(output.as_slice())?;
 
-        let (expected_a, expected_b) = fibonacci_lib::fibonacci(n);
-        assert_eq!(a, expected_a);
-        assert_eq!(b, expected_b);
-        println!("Values are correct!");
+        println!("\n=== EXECUTION RESULT ===");
+        println!("Block Hash: {}", proof_result.block_hash);
+        println!("Block Number: {}", proof_result.block_number);
+        println!("Transaction Hash: {}", proof_result.transaction_hash);
+        println!("Transaction Index: {}", proof_result.transaction_index);
+        println!("Is Included: {}", proof_result.is_included);
+        println!(
+            "Verified Against Root: {}",
+            proof_result.verified_against_root
+        );
 
-        // Record the number of cycles executed.
-        println!("Number of cycles: {}", report.total_instruction_count());
+        // Verify the result
+        if proof_result.is_included {
+            println!("✅ SUCCESS: Transaction correctly proved as INCLUDED");
+        } else {
+            println!("❌ FAILURE: Transaction should be included but was marked as excluded");
+        }
     } else {
-        // Setup the program for proving.
-        let (pk, vk) = client.setup(FIBONACCI_ELF);
-
-        // Generate the proof
+        // Proof generation branch
+        println!("\nGenerating ZK proof...");
+        let (pk, vk) = client.setup(ELF);
         let proof = client
             .prove(&pk, &stdin)
             .run()
-            .expect("failed to generate proof");
+            .map_err(|e| eyre::eyre!("Proof generation failed: {}", e))?;
+        println!("✅ Proof generated successfully!");
 
-        println!("Successfully generated proof!");
-
-        // Verify the proof.
-        client.verify(&proof, &vk).expect("failed to verify proof");
-        println!("Successfully verified proof!");
+        client.verify(&proof, &vk)?;
+        println!("✅ Proof verified successfully!");
     }
+
+    Ok(())
 }
+
+
