@@ -1,13 +1,8 @@
-//! An end-to-end example of using the SP1 SDK to generate an EVM-compatible proof
-//! for transaction inclusion verification that can be verified on-chain.
-//!
-//! You can run this script using the following command:
+//! EVM-compatible proof generation using Succinct Prover Network
+//! 
+//! Usage:
 //! ```shell
-//! RUST_LOG=info cargo run --release --bin evm -- --system groth16
-//! ```
-//! or
-//! ```shell
-//! RUST_LOG=info cargo run --release --bin evm -- --system plonk
+//! RUST_LOG=info cargo run --release --bin evm_network -- --system groth16
 //! ```
 
 use alloy::network::Ethereum;
@@ -18,9 +13,8 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 use sp1_sdk::{
     include_elf, HashableKey, ProverClient, SP1ProofWithPublicValues, SP1Stdin, SP1VerifyingKey,
-    network::FulfillmentStrategy,
+    network::FulfillmentStrategy, Prover,
 };
-use std::time::Duration;
 use std::path::PathBuf;
 use tx_inclusion_precise_index_lib::{
     generate_merkle_proof, TransactionInclusionInput, TransactionInclusionProof, INCLUDED_TX,
@@ -38,8 +32,6 @@ struct EVMArgs {
     eth_rpc_url: Url,
     #[arg(long, value_enum, default_value = "groth16")]
     system: ProofSystem,
-    #[arg(long)]
-    local: bool,
 }
 
 /// Enum representing the available proof systems
@@ -64,17 +56,6 @@ struct SP1TransactionInclusionProofFixture {
     proof: String,
 }
 
-/// Solidity struct for public values - must match the contract
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PublicValuesStruct {
-    block_hash: [u8; 32],
-    block_number: u64,
-    transaction_hash: [u8; 32],
-    transaction_index: u64,
-    is_included: bool,
-    verified_against_root: [u8; 32],
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
@@ -83,41 +64,32 @@ async fn main() -> Result<()> {
     // Parse the command line arguments.
     let args = EVMArgs::parse();
     
-    // Verify network configuration if not using local mode
-    if !args.local {
-        if std::env::var("NETWORK_PRIVATE_KEY").is_err() {
-            eprintln!("Error: NETWORK_PRIVATE_KEY environment variable is required for network mode");
-            eprintln!("Make sure your .env file contains: NETWORK_PRIVATE_KEY=0x...");
-            std::process::exit(1);
-        }
-        println!("✅ Network private key found in environment");
+    // Verify network configuration
+    if std::env::var("NETWORK_PRIVATE_KEY").is_err() {
+        eprintln!("Error: NETWORK_PRIVATE_KEY environment variable is required for network mode");
+        eprintln!("Make sure your .env file contains: NETWORK_PRIVATE_KEY=0x...");
+        std::process::exit(1);
     }
+    println!("✅ Network private key found in environment");
+
     let provider = RootProvider::<Ethereum>::new_http(args.eth_rpc_url.clone());
 
     println!("Generating EVM-compatible proof for transaction inclusion verification");
-    println!("Proof System: {:?}", args.system);
+    println!("Using Succinct Prover Network with {:?} proof system", args.system);
 
-    // Setup the prover client based on mode
-    let client = if args.local {
-        ProverClient::from_env()
-    } else {
-        ProverClient::builder().network().build()
-    };
-
-    // Setup the program.
+    // Setup the network prover client
+    let client = ProverClient::builder().network().build();
     let (pk, vk) = client.setup(TX_INCLUSION_ELF);
 
     // Get the transaction details
     let tx = provider
         .get_transaction_by_hash(INCLUDED_TX.parse()?)
         .await?
-        .ok_or_else(|| eyre::eyre!("Transaction not found"))?
-;
+        .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
 
     let block_number = tx
         .block_number
-        .ok_or_else(|| eyre::eyre!("Transaction not mined"))?
-;
+        .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
     let tx_index = tx
         .transaction_index
         .ok_or_else(|| eyre::eyre!("Transaction index not found"))? as u64;
@@ -131,13 +103,11 @@ async fn main() -> Result<()> {
     let block = provider
         .get_block(BlockId::Number(block_number.into()))
         .await?
-        .ok_or_else(|| eyre::eyre!("Block not found"))?
-;
+        .ok_or_else(|| eyre::eyre!("Block not found"))?;
 
     // Generate Merkle proof
     let (merkle_proof, encoded_tx_bytes) =
-        generate_merkle_proof(&provider, block_number, tx_index).await?
-;
+        generate_merkle_proof(&provider, block_number, tx_index).await?;
 
     let input = TransactionInclusionInput {
         block_header: block.header.clone().into(),
@@ -151,63 +121,36 @@ async fn main() -> Result<()> {
     let mut stdin = SP1Stdin::new();
     stdin.write(&input_bytes);
 
-    // Generate the proof based on the selected proof system and mode
-    let proof = if args.local {
-        println!("\nGenerating EVM-compatible proof locally...");
-        println!("This requires significant resources (128GB RAM)");
-        
-        match args.system {
-            ProofSystem::Plonk => {
-                println!("Generating PLONK proof locally...");
-                client.prove(&pk, &stdin).plonk().run()
-            }
-            ProofSystem::Groth16 => {
-                println!("Generating Groth16 proof locally...");
-                client.prove(&pk, &stdin).groth16().run()
-            }
+    println!("\n=== SUBMITTING PROOF REQUEST ===");
+    println!("Submitting {} proof request to Succinct Prover Network...", match args.system {
+        ProofSystem::Plonk => "PLONK",
+        ProofSystem::Groth16 => "Groth16"
+    });
+
+    // Generate the proof using network
+    let proof = match args.system {
+        ProofSystem::Plonk => {
+            client.prove(&pk, &stdin)
+                .plonk()
+                .strategy(FulfillmentStrategy::Auction)
+                .run_async()
+                .await
+                .map_err(|e| eyre::eyre!("PLONK proof generation failed: {}", e))?
         }
-        .expect("failed to generate proof locally")
-    } else {
-        println!("\nGenerating EVM-compatible proof using Succinct Prover Network...");
-        println!("Using {} proof system", match args.system {
-            ProofSystem::Plonk => "PLONK",
-            ProofSystem::Groth16 => "Groth16"
-        });
-        
-        let proof_future = match args.system {
-            ProofSystem::Plonk => {
-                println!("Submitting PLONK proof request to network...");
-                client.prove(&pk, &stdin)
-                    .plonk()
-                    .strategy(FulfillmentStrategy::Auction)
-                    .run_async()
-            }
-            ProofSystem::Groth16 => {
-                println!("Submitting Groth16 proof request to network...");
-                client.prove(&pk, &stdin)
-                    .groth16()
-                    .strategy(FulfillmentStrategy::Auction)
-                    .run_async()
-            }
-        };
-        
-        println!("\n=== PROOF REQUEST SUBMITTED ===");
-        println!("Proof request submitted to Succinct Prover Network!");
-        println!("Monitor your proof at: https://explorer.succinct.xyz");
-        println!("Waiting for network proof generation...");
-        println!("=======================================\n");
-        
-        proof_future.await.expect("failed to generate proof using network")
+        ProofSystem::Groth16 => {
+            client.prove(&pk, &stdin)
+                .groth16()
+                .strategy(FulfillmentStrategy::Auction)
+                .run_async()
+                .await
+                .map_err(|e| eyre::eyre!("Groth16 proof generation failed: {}", e))?
+        }
     };
 
-    if args.local {
-        println!("✅ EVM-compatible proof generated successfully locally!");
-    } else {
-        println!("\n✅ EVM-compatible proof generated successfully using Succinct Prover Network!");
-        println!("Proof generation completed via the network - no local resources required!");
-        println!("Check the Succinct Explorer for detailed metrics and verification info.");
-    }
+    println!("✅ EVM-compatible proof generated successfully using Succinct Prover Network!");
+    println!("Proof generation completed via the network - no local resources required!");
 
+    // Create and save fixture
     create_proof_fixture(&proof, &vk, args.system).await?;
 
     Ok(())
@@ -219,9 +162,35 @@ async fn create_proof_fixture(
     vk: &SP1VerifyingKey,
     system: ProofSystem,
 ) -> Result<()> {
-    // Deserialize the public values.
+    // Deserialize the public values from the ZK proof output
     let bytes = proof.public_values.as_slice();
     let proof_result: TransactionInclusionProof = bincode::deserialize(bytes)?;
+
+    // Create Solidity-compatible ABI-encoded public values
+    // This must match the PublicValuesStruct in the Solidity contract
+    use alloy::sol_types::SolType;
+    
+    alloy::sol! {
+        struct PublicValuesStruct {
+            bytes32 blockHash;
+            uint64 blockNumber;
+            bytes32 transactionHash;
+            uint64 transactionIndex;
+            bool isIncluded;
+            bytes32 verifiedAgainstRoot;
+        }
+    }
+    
+    let solidity_public_values = PublicValuesStruct {
+        blockHash: proof_result.block_hash.into(),
+        blockNumber: proof_result.block_number,
+        transactionHash: proof_result.transaction_hash.into(),
+        transactionIndex: proof_result.transaction_index,
+        isIncluded: proof_result.is_included,
+        verifiedAgainstRoot: proof_result.verified_against_root.into(),
+    };
+    
+    let abi_encoded_public_values = PublicValuesStruct::abi_encode(&solidity_public_values);
 
     // Create the testing fixture so we can test things end-to-end.
     let fixture = SP1TransactionInclusionProofFixture {
@@ -232,12 +201,10 @@ async fn create_proof_fixture(
         is_included: proof_result.is_included,
         verified_against_root: format!("0x{}", hex::encode(proof_result.verified_against_root.as_slice())),
         vkey: vk.bytes32().to_string(),
-        public_values: format!("0x{}", hex::encode(bytes)),
+        public_values: format!("0x{}", hex::encode(abi_encoded_public_values)),
         proof: format!("0x{}", hex::encode(proof.bytes())),
     };
 
-    // The verification key is used to verify that the proof corresponds to the execution of the
-    // program on the given input.
     println!("\n=== EVM PROOF FIXTURE GENERATED ===");
     println!("Verification Key: {}", fixture.vkey);
     println!("Block Hash: {}", fixture.block_hash);
@@ -264,6 +231,10 @@ async fn create_proof_fixture(
 
     println!("\n✅ Fixture saved to: {:?}", fixture_file_path);
     println!("This fixture can be used for on-chain verification testing.");
+    println!("\nNext steps:");
+    println!("1. Use this fixture in your Solidity tests");
+    println!("2. Deploy the verification contract with vkey: {}", fixture.vkey);
+    println!("3. Test on-chain verification with the generated proof");
 
     Ok(())
 }
