@@ -21,7 +21,7 @@ struct SP1ProofFixtureJson {
 contract VerifyProofOnchain is Script {
     using stdJson for string;
 
-    address constant DEPLOYED_VERIFIER = 0xA6c55bf0c564973338930C31559ef9fb774224Af;
+    address constant DEPLOYED_VERIFIER = 0x5493090647159c35579AE984032D612166C6357F;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
