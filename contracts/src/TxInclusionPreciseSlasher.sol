@@ -46,6 +46,9 @@ contract TxInclusionPreciseSlasher {
     error CommitmentExpired();
     error CommitmentAlreadySlashed();
     error TransactionWasIncluded();
+    error BlockNumberMismatch();
+    error ProofMustDemonstrateInclusion();
+    error TransactionIndexMismatch();
 
     constructor(address _inclusionVerifier, uint256 _withdrawalDelay) {
         INCLUSION_VERIFIER = _inclusionVerifier;
@@ -144,11 +147,22 @@ contract TxInclusionPreciseSlasher {
         );
 
         if (blockNumber != commitment.blockNumber) {
-            revert("Block number mismatch");
+            revert BlockNumberMismatch();
         }
 
-        if (isIncluded && transactionHash == commitment.transactionHash && transactionIndex == commitment.transactionIndex) {
+        // Proof must show that a transaction WAS included at the promised position
+        if (!isIncluded) {
+            revert ProofMustDemonstrateInclusion();
+        }
+
+        // Check that the included transaction is different from the promised one
+        if (transactionHash == commitment.transactionHash) {
             revert TransactionWasIncluded();
+        }
+
+        // Verify the transaction was included at the exact promised position
+        if (transactionIndex != commitment.transactionIndex) {
+            revert TransactionIndexMismatch();
         }
 
         slashedCommitments[commitmentHash] = true;
