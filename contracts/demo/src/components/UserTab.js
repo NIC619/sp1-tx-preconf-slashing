@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CONTRACTS } from '../contracts';
+import { ethers } from 'ethers';
+import { CONTRACTS, SLASHER_ABI } from '../contracts';
 import { 
   signCommitment, 
   verifyCommitmentSignature, 
@@ -13,6 +14,11 @@ import {
   validateBlockNumber,
   validateTransactionIndex
 } from '../utils/ethereum';
+import { 
+  generateSlashingProof, 
+  validateSlashingProof, 
+  formatProofInfo 
+} from '../utils/proofGeneration';
 
 const UserTab = ({ wallet }) => {
   // Request Preconfirmation State
@@ -36,6 +42,10 @@ const UserTab = ({ wallet }) => {
 
   // Check Inclusion State
   const [inclusionResult, setInclusionResult] = useState(null);
+
+  // Slashing State
+  const [slashingProof, setSlashingProof] = useState(null);
+  const [slashingInProgress, setSlashingInProgress] = useState(false);
 
   // UI State
   const [loading, setLoading] = useState(false);
@@ -209,6 +219,130 @@ const UserTab = ({ wallet }) => {
     } catch (err) {
       setError('Failed to get current block number');
     }
+  };
+
+  const generateSlashingProofForViolation = async () => {
+    if (!verificationResult?.isValid || !inclusionResult || inclusionResult.isIncluded) {
+      setError('No slashable violation detected');
+      return;
+    }
+
+    if (inclusionResult.violationType !== 'DIFFERENT_TRANSACTION') {
+      setError('Slashing is only supported for DIFFERENT_TRANSACTION violations in this demo');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      clearMessages();
+
+      console.log('Generating slashing proof for violation:', inclusionResult);
+
+      const proof = await generateSlashingProof(inclusionResult, verificationResult.commitment);
+      
+      // Validate the proof can be used for slashing
+      const validation = validateSlashingProof(proof, verificationResult.commitment, inclusionResult);
+      
+      if (!validation.isValid) {
+        throw new Error(`Invalid slashing proof: ${validation.errors.join(', ')}`);
+      }
+
+      setSlashingProof(proof);
+      setSuccess('Slashing proof generated successfully! You can now slash the proposer.');
+
+    } catch (err) {
+      console.error('Proof generation error:', err);
+      setError(`Failed to generate slashing proof: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeSlashing = async () => {
+    if (!slashingProof || !verificationResult || !wallet.signer) {
+      setError('Missing required data for slashing');
+      return;
+    }
+
+    try {
+      setSlashingInProgress(true);
+      clearMessages();
+
+      // Get slasher contract
+      const slasherContract = new ethers.Contract(slasherAddress, SLASHER_ABI, wallet.signer);
+
+      console.log('Executing slashing with proof:', formatProofInfo(slashingProof));
+
+      // Prepare commitment tuple for contract call
+      const commitmentTuple = [
+        verificationResult.commitment.blockNumber,
+        verificationResult.commitment.transactionHash,
+        verificationResult.commitment.transactionIndex,
+        verificationResult.commitment.deadline
+      ];
+
+      // Extract signature components
+      const signature = verificationResult.signature;
+      const { v, r, s } = ethers.Signature.from(signature);
+
+      setSuccess('Transaction submitted. Waiting for confirmation...');
+
+      // Call slash function
+      const tx = await slasherContract.slash(
+        commitmentTuple,
+        verificationResult.proposerAddress,
+        v,
+        r,
+        s,
+        slashingProof.publicValues,
+        slashingProof.proofBytes
+      );
+
+      console.log('Slashing transaction submitted:', tx.hash);
+
+      await tx.wait();
+
+      setSuccess('✅ Slashing successful! Proposer has been slashed for breaking their commitment.');
+
+      // Reset slashing state
+      setSlashingProof(null);
+
+    } catch (err) {
+      console.error('Slashing error:', err);
+      
+      // Parse contract errors
+      let errorMessage = err.message;
+      if (err.reason) {
+        errorMessage = `Contract error: ${err.reason}`;
+      } else if (err.data && typeof err.data === 'string') {
+        // Try to decode custom errors
+        if (err.data.includes('ProofMustDemonstrateInclusion')) {
+          errorMessage = 'Error: Proof must demonstrate that a transaction was included';
+        } else if (err.data.includes('TransactionWasIncluded')) {
+          errorMessage = 'Error: The promised transaction was actually included';
+        } else if (err.data.includes('TransactionIndexMismatch')) {
+          errorMessage = 'Error: Transaction index in proof does not match commitment';
+        } else if (err.data.includes('BlockNumberMismatch')) {
+          errorMessage = 'Error: Block number in proof does not match commitment';
+        }
+      }
+
+      setError(`Failed to slash proposer: ${errorMessage}`);
+    } finally {
+      setSlashingInProgress(false);
+    }
+  };
+
+  const canGenerateSlashingProof = () => {
+    return verificationResult?.isValid && 
+           inclusionResult && 
+           !inclusionResult.isIncluded && 
+           inclusionResult.violationType === 'DIFFERENT_TRANSACTION';
+  };
+
+  const getSlasherContract = () => {
+    if (!wallet.signer || !slasherAddress) return null;
+    return new ethers.Contract(slasherAddress, SLASHER_ABI, wallet.signer);
   };
 
   return (
@@ -444,25 +578,109 @@ const UserTab = ({ wallet }) => {
       {inclusionResult && !inclusionResult.isIncluded && (
         <div className="section">
           <h3>4. Slash Proposer</h3>
-          <div className="warning">
-            <strong>Implementation Note:</strong> The slashing functionality requires integration with the deployed slasher contract and ZK proof generation. In a production implementation, this would:
-            <ul style={{ marginTop: '10px', textAlign: 'left' }}>
-              <li>Generate a ZK proof that the wrong transaction is at the specified index</li>
-              <li>Call the slasher contract's slash() function with the proof</li>
-              <li>Burn the proposer's bond as punishment</li>
-            </ul>
-          </div>
           
-          <div className="contract-info">
-            <strong>Slasher Contract:</strong> {slasherAddress || 'Not deployed on current network'}
-          </div>
+          {inclusionResult.violationType === 'DIFFERENT_TRANSACTION' ? (
+            <div>
+              <div className="success" style={{ marginBottom: '15px' }}>
+                <strong>✅ Slashable Violation Detected!</strong><br/>
+                A different transaction was included at the promised position. This proposer can be slashed.
+              </div>
 
-          <button
-            className="btn btn-danger"
-            disabled={true}
-          >
-            Slash Proposer (Coming Soon)
-          </button>
+              {!slashingProof ? (
+                <div>
+                  <div className="warning">
+                    <strong>Step 1:</strong> Generate a ZK proof showing that a different transaction was included at the promised position.
+                  </div>
+                  
+                  <button
+                    className="btn btn-warning"
+                    onClick={generateSlashingProofForViolation}
+                    disabled={loading || !canGenerateSlashingProof() || !wallet.isConnected}
+                  >
+                    {loading ? 'Generating Proof...' : 'Generate Slashing Proof'}
+                  </button>
+
+                  {!wallet.isConnected && (
+                    <div className="warning" style={{ marginTop: '10px' }}>
+                      Please connect your wallet to generate slashing proof.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div className="status-card status-success">
+                    <h4>Slashing Proof Generated ✅</h4>
+                    <div className="info-grid">
+                      <div className="info-item">
+                        <strong>Proof Type:</strong> {slashingProof.proofType}
+                      </div>
+                      <div className="info-item">
+                        <strong>Real Proof:</strong> {slashingProof.isRealProof ? 'Yes (Succinct)' : 'No (Demo Mock)'}
+                      </div>
+                      <div className="info-item">
+                        <strong>Block Number:</strong> {formatProofInfo(slashingProof).blockNumber}
+                      </div>
+                      <div className="info-item">
+                        <strong>Transaction Hash:</strong><br/>
+                        <code>{formatProofInfo(slashingProof).transactionHash}</code>
+                      </div>
+                      <div className="info-item">
+                        <strong>Index:</strong> {formatProofInfo(slashingProof).transactionIndex}
+                      </div>
+                      <div className="info-item">
+                        <strong>Included:</strong> {formatProofInfo(slashingProof).isIncluded ? 'Yes' : 'No'}
+                      </div>
+                    </div>
+
+                    {slashingProof.isRealProof && (
+                      <div className="contract-info" style={{ marginTop: '15px' }}>
+                        <strong>🎉 Using Real Succinct Proof!</strong><br/>
+                        This proof was generated by the Succinct prover network and demonstrates that transaction 
+                        <code>{formatProofInfo(slashingProof).transactionHash}</code> was included at position 
+                        {formatProofInfo(slashingProof).transactionIndex} in block {formatProofInfo(slashingProof).blockNumber}.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="warning" style={{ margin: '15px 0' }}>
+                    <strong>Step 2:</strong> Execute slashing by calling the slasher contract. This will slash 0.1 ETH from the proposer's bond.
+                  </div>
+
+                  <button
+                    className="btn btn-danger"
+                    onClick={executeSlashing}
+                    disabled={slashingInProgress || !wallet.isConnected}
+                    style={{ marginRight: '10px' }}
+                  >
+                    {slashingInProgress ? 'Slashing...' : 'Execute Slashing'}
+                  </button>
+
+                  <button
+                    className="btn btn-warning"
+                    onClick={() => setSlashingProof(null)}
+                    disabled={slashingInProgress}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              
+              <div className="contract-info" style={{ marginTop: '15px' }}>
+                <strong>Slasher Contract:</strong> 
+                <span className="contract-address"> {slasherAddress || 'Not deployed on current network'}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="warning">
+              <strong>Slashing Not Available:</strong> This demo only supports slashing for DIFFERENT_TRANSACTION violations. 
+              Current violation type: {inclusionResult.violationType}
+              
+              <div style={{ marginTop: '10px', fontSize: '14px' }}>
+                <strong>Supported:</strong> When a different transaction is included at the promised position<br/>
+                <strong>Not supported:</strong> When no transaction exists at the promised position, block not found, etc.
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

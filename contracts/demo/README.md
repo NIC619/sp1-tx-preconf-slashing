@@ -55,7 +55,7 @@ Update contract addresses in `src/contracts.js`:
 ```javascript
 export const CONTRACTS = {
   SEPOLIA: {
-    SLASHER: '0x1cF3c7F4bA3720Dd7a05058725Ab3846309B6DC4',
+    SLASHER: '0x7a4a1f03816e411dCE396a18d146677042831819',
     VERIFIER: '0x5493090647159c35579AE984032D612166C6357F',
   },
   MAINNET: {

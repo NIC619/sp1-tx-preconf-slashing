@@ -1,7 +1,7 @@
 // Contract addresses - update these with your deployed contracts
 export const CONTRACTS = {
   SEPOLIA: {
-    SLASHER: '0x1cF3c7F4bA3720Dd7a05058725Ab3846309B6DC4',
+    SLASHER: '0x7a4a1f03816e411dCE396a18d146677042831819',
     VERIFIER: '0x5493090647159c35579AE984032D612166C6357F',
   },
   // Add mainnet addresses when deployed
@@ -113,6 +113,37 @@ export const SLASHER_ABI = [
     "inputs": [],
     "name": "COMMITMENT_TYPEHASH",
     "outputs": [{"type": "bytes32"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {"name": "blockNumber", "type": "uint64"},
+          {"name": "transactionHash", "type": "bytes32"},
+          {"name": "transactionIndex", "type": "uint64"},
+          {"name": "deadline", "type": "uint256"}
+        ],
+        "name": "commitment",
+        "type": "tuple"
+      },
+      {"name": "proposer", "type": "address"},
+      {"name": "v", "type": "uint8"},
+      {"name": "r", "type": "bytes32"},
+      {"name": "s", "type": "bytes32"},
+      {"name": "publicValues", "type": "bytes"},
+      {"name": "proofBytes", "type": "bytes"}
+    ],
+    "name": "slash",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "commitmentHash", "type": "bytes32"}],
+    "name": "isCommitmentSlashed",
+    "outputs": [{"type": "bool"}],
     "stateMutability": "view",
     "type": "function"
   }

@@ -94,7 +94,7 @@ elif [ "$CONTRACT" = "slasher" ]; then
         fi
         echo "Environment check passed ✅"
         echo "Inclusion Verifier: $TRANSACTION_INCLUSION_VERIFIER"
-        echo "Withdrawal Delay: 1 day"
+        echo "Withdrawal Delay: 100 seconds (for demo purposes)"
         echo ""
     else
         echo "Error: deployment.env file not found"

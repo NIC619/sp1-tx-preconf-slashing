@@ -7,7 +7,7 @@ import {TxInclusionPreciseSlasher} from "../src/TxInclusionPreciseSlasher.sol";
 contract DeployTxInclusionPreciseSlasher is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        uint256 withdrawalDelay = 1 days;
+        uint256 withdrawalDelay = 100 seconds;
 
         // Read verifier address from deployment.env
         string memory deploymentEnv = vm.readFile("deployment.env");

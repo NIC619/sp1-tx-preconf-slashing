@@ -113,6 +113,7 @@ export const checkTransactionInclusion = async (blockNumber, expectedTxHash, exp
     if (result.error) {
       return {
         ...result,
+        actualTransactionHash: result.transactionHash, // Add this alias for proof generation
         expectedTransactionHash: expectedTxHash,
         expectedTransactionIndex: expectedTxIndex,
         isIncluded: false,
@@ -140,6 +141,7 @@ export const checkTransactionInclusion = async (blockNumber, expectedTxHash, exp
     
     return {
       ...result,
+      actualTransactionHash: result.transactionHash, // Add this alias for proof generation
       expectedTransactionHash: expectedTxHash,
       expectedTransactionIndex: expectedTxIndex,
       isIncluded,
