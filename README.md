@@ -141,9 +141,6 @@ For direct interaction with the ZK proof system:
 ### Utility Scripts
 
 ```sh
-# Fix fixture encoding (if needed)
-cargo run --release --bin fix_fixture
-
 # Get verification key for contracts
 cargo run --release --bin vkey
 ```
@@ -414,8 +411,7 @@ forge test --match-test test_ValidTransactionInclusionProof
 
 1. **Network Private Key**: Ensure `NETWORK_PRIVATE_KEY` is set and funded with PROVE tokens
 2. **RAM Requirements**: Local EVM proof generation requires 128GB RAM - use network instead
-3. **Fixture Format**: Use `fix_fixture` script if public values encoding is incorrect
-4. **RPC Limits**: Use a reliable Ethereum RPC endpoint for transaction data
+3. **RPC Limits**: Use a reliable Ethereum RPC endpoint for transaction data
 
 ### Debug Commands
 
@@ -425,9 +421,6 @@ cargo run --release --bin vkey
 
 # Validate transaction data
 cargo run --release -- --execute
-
-# Fix fixture encoding
-cargo run --release --bin fix_fixture
 
 # Test contract deployment
 cd contracts && forge test -vv

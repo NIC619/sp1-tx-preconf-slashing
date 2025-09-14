@@ -24,7 +24,6 @@ These fixtures contain **fixed values** that never change and should be used for
 **Used by:**
 - Solidity tests (`contracts/test/TransactionInclusionVerifier.t.sol`)
 - Onchain verification script (`contracts/script/VerifyProofOnchain.s.sol`) 
-- Fixture repair utility (`script/src/bin/fix_fixture.rs`)
 - Demo UI hardcoded `PROOF_FIXTURE` constant for reliable demo scenarios
 
 ## Why This Separation?

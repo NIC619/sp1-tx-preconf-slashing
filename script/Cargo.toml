@@ -20,9 +20,6 @@ path = "src/bin/vkey.rs"
 name = "evm_prover_network"
 path = "src/bin/evm_prover_network.rs"
 
-[[bin]]
-name = "fix_fixture"
-path = "src/bin/fix_fixture.rs"
 
 [dependencies]
 # alloy - only what's needed for the CLI
