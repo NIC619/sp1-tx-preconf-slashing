@@ -48,6 +48,7 @@ const UserTab = ({ wallet }) => {
   // Slashing State
   const [slashingProof, setSlashingProof] = useState(null);
   const [slashingInProgress, setSlashingInProgress] = useState(false);
+  const [slashingCompleted, setSlashingCompleted] = useState(false);
   
   // Real-time proving state
   const [realTimeProvingAvailable, setRealTimeProvingAvailable] = useState(false);
@@ -64,6 +65,51 @@ const UserTab = ({ wallet }) => {
   const clearMessages = () => {
     setError('');
     setSuccess('');
+  };
+
+  // Clean up error messages to remove duplicated prefixes
+  const cleanErrorMessage = (message) => {
+    if (!message) return message;
+    
+    // Remove redundant prefixes - be more aggressive about cleanup
+    const patterns = [
+      'Failed to generate slashing proof: ',
+      'Cannot generate slashing proof: ',
+      'Real-time proof generation failed: ',
+      'Error generating slashing proof: ',
+      'Failed to generate slashing proof:',
+      'Cannot generate slashing proof:',
+      'Real-time proof generation failed:',
+      'Error generating slashing proof:'
+    ];
+    
+    let cleaned = message;
+    
+    // First pass: remove all but the most meaningful prefix
+    // Prioritize keeping "Cannot generate slashing proof:" as it's most specific
+    if (cleaned.includes('Cannot generate slashing proof:')) {
+      // Remove other redundant prefixes before "Cannot generate slashing proof:"
+      patterns.forEach(pattern => {
+        if (pattern !== 'Cannot generate slashing proof: ' && pattern !== 'Cannot generate slashing proof:') {
+          cleaned = cleaned.replace(new RegExp(pattern, 'gi'), '');
+        }
+      });
+    } else {
+      // If no "Cannot generate" prefix, remove all duplicates normally
+      let changed = true;
+      while (changed) {
+        changed = false;
+        patterns.forEach(pattern => {
+          const count = (cleaned.match(new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')) || []).length;
+          if (count > 1) {
+            cleaned = cleaned.replace(new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '');
+            changed = true;
+          }
+        });
+      }
+    }
+    
+    return cleaned.trim();
   };
 
   const handleRequestFormChange = (field, value) => {
@@ -309,9 +355,14 @@ const UserTab = ({ wallet }) => {
       await tx.wait();
 
       setSuccess('✅ Slashing successful! Proposer has been slashed for breaking their commitment.');
+      setSlashingCompleted(true);
 
-      // Reset slashing state
-      setSlashingProof(null);
+      // Keep the success message visible for 10 seconds before resetting
+      setTimeout(() => {
+        setSlashingProof(null);
+        setSlashingCompleted(false);
+        clearMessages();
+      }, 10000);
 
     } catch (err) {
       console.error('Slashing error:', err);
@@ -321,15 +372,23 @@ const UserTab = ({ wallet }) => {
       if (err.reason) {
         errorMessage = `Contract error: ${err.reason}`;
       } else if (err.data && typeof err.data === 'string') {
-        // Try to decode custom errors
-        if (err.data.includes('ProofMustDemonstrateInclusion')) {
-          errorMessage = 'Error: Proof must demonstrate that a transaction was included';
-        } else if (err.data.includes('TransactionWasIncluded')) {
-          errorMessage = 'Error: The promised transaction was actually included';
-        } else if (err.data.includes('TransactionIndexMismatch')) {
-          errorMessage = 'Error: Transaction index in proof does not match commitment';
-        } else if (err.data.includes('BlockNumberMismatch')) {
-          errorMessage = 'Error: Block number in proof does not match commitment';
+        // Map common error selectors to readable messages
+        const errorMap = {
+          '0xcf3e0074': 'CommitmentAlreadySlashed: This commitment has already been slashed',
+          '0x4ca88867': 'InvalidSignature: The commitment signature is invalid', 
+          '0x857f8f6e': 'CommitmentExpired: The commitment has expired',
+          '0x1e4ec46b': 'InsufficientProposerBond: Proposer does not have sufficient bond to slash',
+          '0xd2b8c7c9': 'TransactionWasIncluded: Cannot slash - the promised transaction was actually included',
+          '0x82b42900': 'ProofMustDemonstrateInclusion: Proof must show a transaction was included',
+          '0x7c946ed7': 'BlockNumberMismatch: Block number in proof does not match commitment',
+          '0x8c379a00': 'TransactionIndexMismatch: Transaction index in proof does not match commitment'
+        };
+        
+        const errorSelector = err.data.slice(0, 10);
+        if (errorMap[errorSelector]) {
+          errorMessage = errorMap[errorSelector];
+        } else {
+          errorMessage = `Unknown contract error (selector: ${errorSelector}): ${err.message}`;
         }
       }
 
@@ -353,8 +412,6 @@ const UserTab = ({ wallet }) => {
 
   return (
     <div>
-      {error && <div className="error">{error}</div>}
-      {success && <div className="success">{success}</div>}
 
       {/* Request Preconfirmation */}
       <div className="section">
@@ -489,9 +546,23 @@ const UserTab = ({ wallet }) => {
         <button
           className="btn btn-primary"
           onClick={verifyCommitment}
+          disabled={loading}
         >
-          Verify Signature
+          {loading ? 'Verifying...' : 'Verify Signature'}
         </button>
+
+        {/* Contextual messages for verification */}
+        {error && error.includes('signature') && (
+          <div className="alert alert-error" style={{ marginTop: '10px' }}>
+            <strong>⚠️ Verification Error:</strong> {cleanErrorMessage(error)}
+          </div>
+        )}
+        
+        {success && success.includes('signature') && (
+          <div className="alert alert-success" style={{ marginTop: '10px' }}>
+            <strong>✅ Success:</strong> {success}
+          </div>
+        )}
 
         {verificationResult && (
           <div className={`status-card ${verificationResult.isValid ? 'status-success' : 'status-error'}`}>
@@ -520,6 +591,12 @@ const UserTab = ({ wallet }) => {
         >
           {loading ? 'Checking Inclusion...' : 'Check Transaction Inclusion'}
         </button>
+
+        {success && success.includes('included at the promised position') && (
+          <div className="alert alert-success" style={{ marginTop: '10px' }}>
+            <strong>✅ Success:</strong> {success}
+          </div>
+        )}
 
         {!verificationResult?.isValid && (
           <div className="warning">
@@ -581,11 +658,16 @@ const UserTab = ({ wallet }) => {
       </div>
 
       {/* Slash Proposer */}
-      {inclusionResult && !inclusionResult.isIncluded && (
+      {((inclusionResult && !inclusionResult.isIncluded) || slashingCompleted) && (
         <div className="section">
           <h3>4. Slash Proposer</h3>
           
-          {inclusionResult.violationType === 'DIFFERENT_TRANSACTION' ? (
+          {slashingCompleted ? (
+            <div className="success">
+              <strong>✅ Slashing Completed Successfully!</strong><br/>
+              The proposer has been slashed for breaking their commitment.
+            </div>
+          ) : inclusionResult?.violationType === 'DIFFERENT_TRANSACTION' ? (
             <div>
               <div className="success" style={{ marginBottom: '15px' }}>
                 <strong>✅ Slashable Violation Detected!</strong><br/>
@@ -606,6 +688,13 @@ const UserTab = ({ wallet }) => {
                     {loading ? 'Generating Proof...' : 'Generate Slashing Proof'}
                   </button>
 
+                  {/* Contextual messages for proof generation */}
+                  {error && (error.includes('slashing proof') || error.includes('Cannot generate slashing proof')) && (
+                    <div className="alert alert-error" style={{ marginTop: '10px' }}>
+                      <strong>⚠️ Proof Generation Failed:</strong> {cleanErrorMessage(error)}
+                    </div>
+                  )}
+
                   {!wallet.isConnected && (
                     <div className="warning" style={{ marginTop: '10px' }}>
                       Please connect your wallet to generate slashing proof.
@@ -615,7 +704,7 @@ const UserTab = ({ wallet }) => {
               ) : (
                 <div>
                   <div className="status-card status-success">
-                    <h4>Slashing Proof Generated ✅</h4>
+                    <h4>Transaction Inclusion Proof (of different transaction) Generated ✅</h4>
                     <div className="info-grid">
                       <div className="info-item">
                         <strong>Proof Type:</strong> {slashingProof.proofType}
@@ -660,6 +749,19 @@ const UserTab = ({ wallet }) => {
                   >
                     {slashingInProgress ? 'Slashing...' : 'Execute Slashing'}
                   </button>
+
+                  {/* Contextual messages for slashing execution */}
+                  {error && (error.includes('slashing') || error.includes('transaction failed')) && !error.includes('proof') && (
+                    <div className="alert alert-error" style={{ marginTop: '10px' }}>
+                      <strong>⚠️ Slashing Failed:</strong> {cleanErrorMessage(error)}
+                    </div>
+                  )}
+                  
+                  {success && (success.includes('Slashing successful') || success.includes('slashed')) && (
+                    <div className="alert alert-success" style={{ marginTop: '10px' }}>
+                      <strong>🎉 Slashing Successful:</strong> {success}
+                    </div>
+                  )}
 
                   <button
                     className="btn btn-warning"
