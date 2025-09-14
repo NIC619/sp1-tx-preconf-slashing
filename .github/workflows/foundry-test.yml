@@ -37,6 +37,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-foundry-
 
+      - name: Install Forge dependencies
+        run: |
+          cd contracts
+          forge install
+          
       - name: Run Forge build
         run: |
           cd contracts
