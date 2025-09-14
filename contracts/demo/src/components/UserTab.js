@@ -17,7 +17,9 @@ import {
 import { 
   generateSlashingProof, 
   validateSlashingProof, 
-  formatProofInfo 
+  formatProofInfo,
+  isRealTimeProvingAvailable,
+  getProofCostEstimate
 } from '../utils/proofGeneration';
 
 const UserTab = ({ wallet }) => {
@@ -46,6 +48,10 @@ const UserTab = ({ wallet }) => {
   // Slashing State
   const [slashingProof, setSlashingProof] = useState(null);
   const [slashingInProgress, setSlashingInProgress] = useState(false);
+  
+  // Real-time proving state
+  const [realTimeProvingAvailable, setRealTimeProvingAvailable] = useState(false);
+  const [costEstimate, setCostEstimate] = useState(null);
 
   // UI State
   const [loading, setLoading] = useState(false);

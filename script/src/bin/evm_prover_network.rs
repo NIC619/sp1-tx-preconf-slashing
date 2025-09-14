@@ -47,6 +47,8 @@ struct EVMArgs {
     eth_rpc_url: Url,
     #[arg(long, value_enum, default_value = "groth16")]
     system: ProofSystem,
+    #[arg(long, help = "Transaction hash to generate proof for (overrides default)")]
+    transaction_hash: Option<String>,
 }
 
 /// Enum representing the available proof systems
@@ -96,9 +98,16 @@ async fn main() -> Result<()> {
     let client = ProverClient::builder().network().build();
     let (pk, vk) = client.setup(TX_INCLUSION_ELF);
 
+    // Get the transaction hash to use (from args, env var, or default)
+    let transaction_hash = args.transaction_hash
+        .or_else(|| std::env::var("INCLUDED_TX").ok())
+        .unwrap_or_else(|| INCLUDED_TX.to_string());
+    
+    println!("Using transaction hash: {}", transaction_hash);
+
     // Get the transaction details
     let tx = provider
-        .get_transaction_by_hash(INCLUDED_TX.parse()?)
+        .get_transaction_by_hash(transaction_hash.parse()?)
         .await?
         .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
 

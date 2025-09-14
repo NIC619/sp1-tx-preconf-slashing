@@ -78,35 +78,131 @@ export const generateSlashingProof = async (inclusionResult, commitment) => {
         proofType: 'SUCCINCT_GROTH16'
       };
     } else {
-      console.log('Generating mock proof for slashing (real scenario would call Succinct API)');
+      // Try to generate real-time proof if backend is available
+      console.log('Attempting real-time proof generation via Succinct network...');
       
-      // Generate mock proof for other scenarios
-      // In production, this would make an API call to Succinct prover network
-      const publicValuesStruct = createPublicValuesStruct(
-        inclusionResult.blockHash || ethers.ZeroHash,
-        blockNumber,
-        actualTxHash,
-        transactionIndex,
-        true, // Must be true for slashing
-        ethers.ZeroHash // Mock value
-      );
-
-      const encodedPublicValues = encodePublicValues(publicValuesStruct);
-      
-      // Generate mock proof bytes (in production, this comes from Succinct)
-      const mockProofBytes = ethers.randomBytes(384); // Typical Groth16 proof size
-
-      return {
-        publicValues: encodedPublicValues,
-        proofBytes: ethers.hexlify(mockProofBytes),
-        publicValuesStruct,
-        isRealProof: false,
-        proofType: 'MOCK_FOR_DEMO'
-      };
+      try {
+        const realTimeProof = await generateRealTimeProof(inclusionResult);
+        console.log('Successfully generated real-time proof!');
+        return realTimeProof;
+      } catch (realTimeError) {
+        console.error('Real-time proof generation failed:', realTimeError.message);
+        throw new Error(
+          `Cannot generate slashing proof: Real-time proof generation failed (${realTimeError.message}). ` +
+          `This transaction/block combination does not match the pre-generated fixture and the Succinct prover network is not available. ` +
+          `Please either: 1) Use the specific fixture scenario (block 23330039, index 33), or 2) Configure the Succinct prover network with proper credentials.`
+        );
+      }
     }
   } catch (error) {
     console.error('Error generating slashing proof:', error);
     throw new Error(`Failed to generate slashing proof: ${error.message}`);
+  }
+};
+
+// Generate a real-time proof using the backend service
+export const generateRealTimeProof = async (inclusionResult) => {
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+  
+  try {
+    // Check if backend is configured
+    const statusResponse = await fetch(`${backendUrl}/api/status`);
+    const status = await statusResponse.json();
+    
+    if (!status.configured) {
+      throw new Error('Backend service is not properly configured for Succinct network');
+    }
+
+    console.log('Backend service is configured, generating real-time proof...');
+    
+    const response = await fetch(`${backendUrl}/api/generate-proof`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        blockNumber: inclusionResult.blockNumber,
+        transactionHash: inclusionResult.actualTransactionHash,
+        transactionIndex: inclusionResult.transactionIndex,
+        proofSystem: 'groth16'
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Backend service error');
+    }
+
+    const result = await response.json();
+    
+    if (!result.success || !result.fixture) {
+      throw new Error('Invalid response from backend service');
+    }
+
+    const fixture = result.fixture;
+    
+    // Convert the fixture to the expected format
+    const publicValuesStruct = createPublicValuesStruct(
+      fixture.blockHash,
+      fixture.blockNumber,
+      fixture.transactionHash,
+      fixture.transactionIndex,
+      fixture.isIncluded,
+      fixture.verifiedAgainstRoot
+    );
+
+    return {
+      publicValues: fixture.publicValues,
+      proofBytes: fixture.proof,
+      publicValuesStruct,
+      isRealProof: true,
+      proofType: 'SUCCINCT_REAL_TIME',
+      logs: result.logs
+    };
+    
+  } catch (error) {
+    console.error('Real-time proof generation failed:', error);
+    throw error;
+  }
+};
+
+// Get cost estimate for proof generation
+export const getProofCostEstimate = async (inclusionResult) => {
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+  
+  try {
+    const response = await fetch(`${backendUrl}/api/estimate-cost`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        blockNumber: inclusionResult.blockNumber,
+        transactionIndex: inclusionResult.transactionIndex
+      }),
+    });
+
+    if (!response.ok) {
+      return { estimatedCostUsd: 0.5, estimatedTimeSeconds: 180, availableProvers: 'unknown' };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Cost estimation failed:', error);
+    return { estimatedCostUsd: 0.5, estimatedTimeSeconds: 180, availableProvers: 'unknown' };
+  }
+};
+
+// Check if real-time proving is available
+export const isRealTimeProvingAvailable = async () => {
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+  
+  try {
+    const response = await fetch(`${backendUrl}/api/status`);
+    const status = await response.json();
+    return status.configured;
+  } catch (error) {
+    return false;
   }
 };
 

@@ -136,6 +136,60 @@ let client = ProverClient::builder()
     .build();
 ```
 
+## Command Line Usage
+
+### Basic Usage
+
+The `evm_prover_network` binary now supports dynamic transaction hash specification:
+
+```bash
+# Use default hardcoded transaction
+cargo run --release --bin evm_prover_network -- --system groth16
+
+# Use custom transaction hash
+cargo run --release --bin evm_prover_network -- \
+  --system groth16 \
+  --transaction-hash 0xd25efc79e658a77d3a136a674c04be15a1d2dfc2a695412028a9e51f5c1ee900
+
+# Use custom RPC and transaction
+cargo run --release --bin evm_prover_network -- \
+  --system groth16 \
+  --eth-rpc-url https://your-custom-rpc.com \
+  --transaction-hash 0xabcd1234...
+```
+
+### Available Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--system` | Proof system (groth16 or plonk) | groth16 |
+| `--eth-rpc-url` | Ethereum RPC endpoint | https://ethereum-rpc.publicnode.com |
+| `--transaction-hash` | Specific transaction to prove | Uses hardcoded INCLUDED_TX |
+
+### Environment Variable Support
+
+You can also set the transaction hash via environment variable:
+
+```bash
+INCLUDED_TX=0xabcd1234... cargo run --release --bin evm_prover_network
+```
+
+**Priority order**: `--transaction-hash` > `INCLUDED_TX` env var > hardcoded default
+
+### Integration with Backend Services
+
+When called from backend services (like the demo UI), the binary accepts the transaction hash as a command line argument:
+
+```javascript
+const args = [
+  '--system', 'groth16',
+  '--eth-rpc-url', 'https://ethereum-rpc.publicnode.com',
+  '--transaction-hash', transactionHash
+];
+```
+
+This enables real-time proof generation for any Ethereum transaction.
+
 ## Implementation Patterns
 
 ### 1. Basic Proof Generation
