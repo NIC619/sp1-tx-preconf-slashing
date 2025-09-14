@@ -15,20 +15,28 @@ jobs:
       fail-fast: true
 
     name: Build and Execute
-    runs-on:
-      - runs-on
-      - runner=16cpu-linux-x64
-      - run-id=${{ github.run_id }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: 1.85.0
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            ~/.sp1
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
 
       - name: Install SP1 toolchain
         run: |
@@ -43,4 +51,5 @@ jobs:
 
       - name: Execute SP1 program
         run: |
+          cd script
           cargo run --release -- --execute
