@@ -136,8 +136,8 @@ Visit `http://localhost:3000` and check the browser console for:
 ### 2. Generate Proofs
 
 1. **Use the existing fixture scenario**:
-   - Block: 23330039
-   - Transaction Index: 33
+   - Block: 23354683
+   - Transaction Index: 87
    - Use a different transaction hash to trigger slashing
    - This will use the real proof fixture
 

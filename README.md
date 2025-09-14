@@ -171,7 +171,7 @@ The React demo provides a complete end-to-end experience:
 The system supports two modes:
 
 1. **Fixture Mode**: Uses pre-generated proof for specific scenario:
-   - Block: 23330039, Transaction Index: 33
+   - Block: 23354683, Transaction Index: 87
    - Instant proof generation for testing
 
 2. **Live Mode**: Real-time proof generation via Succinct network:
@@ -242,7 +242,7 @@ NETWORK_PRIVATE_KEY=0x1234567890abcdef...
 
 ### Deployment Configuration
 
-**Verification Key**: `0x00c88cfee30cdc47103e28f414f4546bf7f4675ec944d46ec7b4eb4b3300f306`
+**Verification Key**: `0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769`
 
 #### Supported Networks
 
@@ -305,7 +305,7 @@ struct InclusionCommitment {
 To verify different transactions, update `INCLUDED_TX` in `lib/src/lib.rs`:
 
 ```rust
-pub const INCLUDED_TX: &str = "0x9bd463b17765f462c6e24ded54663ab87cc2babca5ac7c94a704273f746b44c7";
+pub const INCLUDED_TX: &str = "0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436";
 ```
 
 ### Network Configuration
@@ -322,22 +322,22 @@ cargo run --release --bin evm_prover_network -- --eth-rpc-url https://your-rpc-u
 
 1. **Proposer creates commitment**:
    ```
-   Block: 23330039, Index: 33
-   Transaction: 0x7ad3d805da4793feb857ce3476979617b84074c68be96a846d3d5d028611d719
+   Block: 23354683, Index: 87
+   Transaction: 0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff33166021
    Deadline: 2025-01-15T12:00:00.000Z
    ```
 
 2. **User detects violation**:
    ```
    ❌ Commitment Violation Detected: A different transaction was included
-   Actual transaction: 0x9bd463b17765f462c6e24ded54663ab87cc2babca5ac7c94a704273f746b44c7
+   Actual transaction: 0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436
    ```
 
 3. **Proof generation**:
    ```
    ✅ Using real Succinct proof for slashing
    Proof Type: SUCCINCT_GROTH16
-   Block Number: 23330039, Index: 33
+   Block Number: 23354683, Index: 87
    Is Included: true
    ```
 
@@ -354,7 +354,7 @@ Successful proof generation will show:
 
 ```
 ✅ Network private key found in environment
-Transaction found in block: 23330039, index: 33
+Transaction found in block: 23354683, index: 87
 🎉 SUCCESS: Trie root MATCHES block transactions root!
 ✅ Host validation successful - merkle proof is valid!
 
@@ -365,10 +365,10 @@ Monitor your proof at: https://explorer.succinct.xyz/request/0x...
 ✅ EVM-compatible proof generated successfully using Succinct Prover Network!
 
 === EVM PROOF FIXTURE GENERATED ===
-Verification Key: 0x00c88cfee30cdc47103e28f414f4546bf7f4675ec944d46ec7b4eb4b3300f306
-Block Hash: 0x7ad3d805da4793feb857ce3476979617b84074c68be96a846d3d5d028611d719
-Block Number: 23330039
-Transaction Hash: 0x9bd463b17765f462c6e24ded54663ab87cc2babca5ac7c94a704273f746b44c7
+Verification Key: 0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
+Block Hash: 0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff33166021
+Block Number: 23354683
+Transaction Hash: 0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436
 Is Included: true
 ```
 
@@ -401,7 +401,7 @@ forge test --match-test test_ValidTransactionInclusionProof
    - Update contract addresses in `demo/src/contracts.js`
 
 3. **"Cannot generate slashing proof"**:
-   - Use fixture scenario (block 23330039, index 33) for testing
+   - Use fixture scenario (block 23354683, index 87) for testing
    - Or configure Succinct network for real-time proving
    - Check backend service is running for live proofs
 

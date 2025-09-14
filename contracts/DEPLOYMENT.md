@@ -30,7 +30,7 @@ ETHERSCAN_API_KEY=your_api_key_here
 
 # Required for TransactionInclusionVerifier deployment
 SP1_VERIFIER_ADDRESS=0x397A5f7f3dBd538f23DE225B51f532c34448dA9B
-TX_INCLUSION_PROGRAM_VKEY=0x00c88cfee30cdc47103e28f414f4546bf7f4675ec944d46ec7b4eb4b3300f306
+TX_INCLUSION_PROGRAM_VKEY=0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
 ```
 
 **⚠️ Security Note**: Never commit your `.env` file to version control. The `.env` file is already included in `.gitignore` to prevent accidental commits.
@@ -45,7 +45,7 @@ TX_INCLUSION_PROGRAM_VKEY=0x00c88cfee30cdc47103e28f414f4546bf7f4675ec944d46ec7b4
 Your program's verification key is output when you generate proofs. Look for lines like:
 
 ```
-Verification Key: 0x00c88cfee30cdc47103e28f414f4546bf7f4675ec944d46ec7b4eb4b3300f306
+Verification Key: 0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
 ```
 
 ## Deployment

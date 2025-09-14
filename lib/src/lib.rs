@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 // Test transaction hashes
-pub const INCLUDED_TX: &str = "0x9bd463b17765f462c6e24ded54663ab87cc2babca5ac7c94a704273f746b44c7";
+pub const INCLUDED_TX: &str = "0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436";
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
