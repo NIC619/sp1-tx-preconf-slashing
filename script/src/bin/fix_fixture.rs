@@ -19,8 +19,8 @@ struct SP1TransactionInclusionProofFixture {
 }
 
 fn main() -> Result<()> {
-    // Read the existing fixture
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/src/fixtures/groth16-fixture.json");
+    // Read the stable test fixture (not the dynamic one that changes with new proofs)
+    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/src/fixtures/groth16-fixture-for-tests.json");
     let fixture_content = std::fs::read_to_string(&fixture_path)?;
     let mut fixture: SP1TransactionInclusionProofFixture = serde_json::from_str(&fixture_content)?;
 

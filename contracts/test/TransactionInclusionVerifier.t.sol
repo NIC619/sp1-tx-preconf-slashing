@@ -28,7 +28,8 @@ contract TransactionInclusionGroth16Test is Test {
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
-        string memory path = string.concat(root, "/src/fixtures/groth16-fixture.json");
+        // Use stable test fixture that won't change when new proofs are generated
+        string memory path = string.concat(root, "/src/fixtures/groth16-fixture-for-tests.json");
         string memory json = vm.readFile(path);
         bytes memory jsonBytes = json.parseRaw(".");
         return abi.decode(jsonBytes, (SP1ProofFixtureJson));
@@ -106,7 +107,8 @@ contract TransactionInclusionPlonkTest is Test {
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
-        string memory path = string.concat(root, "/src/fixtures/plonk-fixture.json");
+        // Use stable test fixture that won't change when new proofs are generated
+        string memory path = string.concat(root, "/src/fixtures/plonk-fixture-for-tests.json");
         string memory json = vm.readFile(path);
         bytes memory jsonBytes = json.parseRaw(".");
         return abi.decode(jsonBytes, (SP1ProofFixtureJson));
