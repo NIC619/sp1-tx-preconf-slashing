@@ -139,6 +139,24 @@ For direct interaction with the ZK proof system:
 | `./scripts/run_generated_fixture_e2e.sh groth16` | Generate a fresh fixture and verify it through Foundry | RPC access + prover resources |
 | `cargo run --release --bin vkey` | Get verification key | Local |
 
+### Rare-Run Network E2E Workflow
+
+There is also a dedicated GitHub Actions workflow for a paid, real-proof E2E check:
+
+- Workflow file: `.github/workflows/network-proof-e2e.yml`
+- Trigger manually with `workflow_dispatch`
+- Trigger automatically on version tags like `v1.2.3`
+- Trigger automatically on GitHub releases and pre-releases
+
+It is intentionally separate from regular CI because it consumes prover-network resources.
+
+Required GitHub secrets:
+- `NETWORK_PRIVATE_KEY`
+- `ETH_RPC_URL`
+
+Optional GitHub variable:
+- `INCLUDED_TX` to override the default hardcoded transaction used for proof generation
+
 ### Utility Scripts
 
 ```sh

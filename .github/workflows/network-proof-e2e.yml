@@ -1,0 +1,121 @@
+name: Network Proof E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      proof_system:
+        description: Proof system to use for generated-fixture E2E
+        required: false
+        default: groth16
+        type: choice
+        options:
+          - groth16
+          - plonk
+  release:
+    types:
+      - published
+      - prereleased
+
+env:
+  FOUNDRY_PROFILE: ci
+  FOUNDRY_OFFLINE: true
+
+jobs:
+  network-proof-e2e:
+    name: Generate Network Proof And Verify Fixture
+    runs-on: ubuntu-latest
+    if: ${{ secrets.NETWORK_PRIVATE_KEY != '' }}
+    env:
+      SP1_PROVER: network
+      NETWORK_PRIVATE_KEY: ${{ secrets.NETWORK_PRIVATE_KEY }}
+      ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+      PROOF_SYSTEM: ${{ github.event.inputs.proof_system || 'groth16' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            ~/.sp1
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+
+      - name: Cache Foundry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.foundry/cache
+            contracts/cache
+            contracts/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('contracts/foundry.toml', 'contracts/lib/**') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
+      - name: Install SP1 toolchain
+        run: |
+          curl -L https://sp1.succinct.xyz | bash
+          ~/.sp1/bin/sp1up
+          ~/.sp1/bin/cargo-prove prove --version
+
+      - name: Build SP1 program
+        run: |
+          cd program
+          ~/.sp1/bin/cargo-prove prove build
+
+      - name: Run generated fixture E2E
+        env:
+          INCLUDED_TX: ${{ vars.INCLUDED_TX || '' }}
+        run: |
+          if [ -z "${ETH_RPC_URL}" ]; then
+            echo "ETH_RPC_URL secret is required for network proof E2E" >&2
+            exit 1
+          fi
+
+          FIXTURE_PATH="${PWD}/contracts/src/fixtures/${PROOF_SYSTEM}-e2e-${GITHUB_RUN_ID}.json"
+
+          if [ -n "${INCLUDED_TX}" ]; then
+            TX_INCLUSION_E2E_FIXTURE_PATH="${FIXTURE_PATH}" \
+            ./scripts/run_generated_fixture_e2e.sh "${PROOF_SYSTEM}" \
+              --eth-rpc-url "${ETH_RPC_URL}" \
+              --transaction-hash "${INCLUDED_TX}"
+          else
+            TX_INCLUSION_E2E_FIXTURE_PATH="${FIXTURE_PATH}" \
+            ./scripts/run_generated_fixture_e2e.sh "${PROOF_SYSTEM}" \
+              --eth-rpc-url "${ETH_RPC_URL}"
+          fi
+
+      - name: Upload generated fixtures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-proof-fixtures-${{ github.run_id }}
+          path: contracts/src/fixtures/*-e2e-*.json
+          if-no-files-found: ignore
+
+  missing-secret:
+    name: Missing Network Secret
+    runs-on: ubuntu-latest
+    if: ${{ secrets.NETWORK_PRIVATE_KEY == '' }}
+    steps:
+      - name: Explain skipped workflow
+        run: |
+          echo "Skipping network-proof-e2e because NETWORK_PRIVATE_KEY is not configured."
+          echo "Add NETWORK_PRIVATE_KEY and ETH_RPC_URL secrets to enable this rare, paid E2E workflow."
