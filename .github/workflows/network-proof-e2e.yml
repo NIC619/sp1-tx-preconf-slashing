@@ -26,7 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: paid-network-proof-e2e
-    if: ${{ secrets.NETWORK_PRIVATE_KEY != '' }}
     env:
       SP1_PROVER: network
       NETWORK_PRIVATE_KEY: ${{ secrets.NETWORK_PRIVATE_KEY }}
@@ -86,6 +85,11 @@ jobs:
         env:
           INCLUDED_TX: ${{ vars.INCLUDED_TX || '' }}
         run: |
+          if [ -z "${NETWORK_PRIVATE_KEY}" ]; then
+            echo "NETWORK_PRIVATE_KEY environment secret is required for network proof E2E" >&2
+            exit 1
+          fi
+
           if [ -z "${ETH_RPC_URL}" ]; then
             echo "ETH_RPC_URL secret is required for network proof E2E" >&2
             exit 1
@@ -104,6 +108,47 @@ jobs:
               --eth-rpc-url "${ETH_RPC_URL}"
           fi
 
+      - name: Write workflow summary
+        if: always()
+        env:
+          FIXTURE_PATH: ${{ github.workspace }}/contracts/src/fixtures/${{ github.event.inputs.proof_system || 'groth16' }}-e2e-${{ github.run_id }}.json
+        run: |
+          if [ ! -f "${FIXTURE_PATH}" ]; then
+            {
+              echo "## Network Proof E2E"
+              echo
+              echo "No generated fixture was found at \`${FIXTURE_PATH}\`."
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          fixture_path = os.environ["FIXTURE_PATH"]
+          proof_system = os.environ.get("PROOF_SYSTEM", "groth16")
+
+          with open(fixture_path, "r", encoding="utf-8") as f:
+              fixture = json.load(f)
+
+          summary = f"""## Network Proof E2E
+
+          | Field | Value |
+          | --- | --- |
+          | Proof system | `{proof_system}` |
+          | Block number | `{fixture["blockNumber"]}` |
+          | Transaction index | `{fixture["transactionIndex"]}` |
+          | Transaction hash | `{fixture["transactionHash"]}` |
+          | Block hash | `{fixture["blockHash"]}` |
+          | Included | `{fixture["isIncluded"]}` |
+          | Fixture path | `{fixture_path}` |
+          """
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write(summary + "\n")
+          PY
+
       - name: Upload generated fixtures
         if: always()
         uses: actions/upload-artifact@v4
@@ -111,13 +156,3 @@ jobs:
           name: generated-proof-fixtures-${{ github.run_id }}
           path: contracts/src/fixtures/*-e2e-*.json
           if-no-files-found: ignore
-
-  missing-secret:
-    name: Missing Network Secret
-    runs-on: ubuntu-latest
-    if: ${{ secrets.NETWORK_PRIVATE_KEY == '' }}
-    steps:
-      - name: Explain skipped workflow
-        run: |
-          echo "Skipping network-proof-e2e because NETWORK_PRIVATE_KEY is not configured."
-          echo "Add NETWORK_PRIVATE_KEY and ETH_RPC_URL secrets to enable this rare, paid E2E workflow."
