@@ -24,6 +24,8 @@ jobs:
   network-proof-e2e:
     name: Generate Network Proof And Verify Fixture
     runs-on: ubuntu-latest
+    environment:
+      name: paid-network-proof-e2e
     if: ${{ secrets.NETWORK_PRIVATE_KEY != '' }}
     env:
       SP1_PROVER: network

@@ -144,17 +144,22 @@ For direct interaction with the ZK proof system:
 There is also a dedicated GitHub Actions workflow for a paid, real-proof E2E check:
 
 - Workflow file: `.github/workflows/network-proof-e2e.yml`
+- GitHub environment: `paid-network-proof-e2e`
 - Trigger manually with `workflow_dispatch`
-- Trigger automatically on version tags like `v1.2.3`
 - Trigger automatically on GitHub releases and pre-releases
 
 It is intentionally separate from regular CI because it consumes prover-network resources.
 
-Required GitHub secrets:
+Recommended setup:
+- create a protected GitHub Environment named `paid-network-proof-e2e`
+- add required reviewers so release/pre-release runs need explicit approval
+- store the paid-workflow credentials as environment secrets there
+
+Required environment secrets:
 - `NETWORK_PRIVATE_KEY`
 - `ETH_RPC_URL`
 
-Optional GitHub variable:
+Optional environment or repository variable:
 - `INCLUDED_TX` to override the default hardcoded transaction used for proof generation
 
 ### Utility Scripts
