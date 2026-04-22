@@ -172,7 +172,10 @@ pub async fn generate_merkle_proof(
         }
         Err(e) => {
             println!("❌ Host validation failed: {:?}", e);
-            return Err(eyre::eyre!("Generated merkle proof failed validation: {:?}", e));
+            return Err(eyre::eyre!(
+                "Generated merkle proof failed validation: {:?}",
+                e
+            ));
         }
     }
 

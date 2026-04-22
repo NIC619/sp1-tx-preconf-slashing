@@ -12,7 +12,7 @@ These fixtures are automatically updated when new proofs are generated and shoul
 
 **Used by:**
 - Backend service (`contracts/demo/backend/server.js`) for fallback scenarios
-- Rust proof generation scripts (`script/src/bin/evm_prover_network.rs`, `script/src/bin/evm.rs`)
+- Rust proof generation script (`script/src/bin/evm.rs`)
 - Demo UI for real-time proof scenarios
 
 ### 🧪 Stable Test Fixtures (Never Change)

@@ -95,10 +95,10 @@ For direct interaction with the ZK proof system:
    ```sh
    cd script
    # Use default hardcoded transaction
-   cargo run --release --bin evm_prover_network -- --system groth16
+   SP1_PROVER=network cargo run --release --bin evm -- --system groth16
    
    # Generate proof for specific transaction
-   cargo run --release --bin evm_prover_network -- \
+   SP1_PROVER=network cargo run --release --bin evm -- \
      --system groth16 \
      --transaction-hash 0xd25efc79e658a77d3a136a674c04be15a1d2dfc2a695412028a9e51f5c1ee900
    ```
@@ -133,9 +133,9 @@ For direct interaction with the ZK proof system:
 |--------|---------|--------------|
 | `cargo run --release -- --execute` | Execute program locally | Local |
 | `cargo run --release -- --prove` | Generate core proof | Local |
-| `cargo run --release --bin evm_prover_network` | Prover network EVM proofs (recommended) | Network key + PROVE tokens |
-| `cargo run --release --bin evm_prover_network -- --transaction-hash 0x...` | Generate proof for specific transaction | Network key + PROVE tokens |
-| `cargo run --release --bin evm --local` | Local EVM proofs | 128GB RAM + Docker |
+| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16` | Prover network EVM proofs (recommended) | Network key + PROVE tokens |
+| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...` | Generate proof for specific transaction | Network key + PROVE tokens |
+| `cargo run --release --bin evm -- --system groth16` | Local EVM proofs | Local prover resources |
 | `cargo run --release --bin vkey` | Get verification key | Local |
 
 ### Utility Scripts
@@ -172,7 +172,7 @@ The system supports two modes:
    - Instant proof generation for testing
 
 2. **Live Mode**: Real-time proof generation via Succinct network:
-   - Integrates with your Rust `evm_prover_network` binary
+   - Integrates with your Rust `evm` binary using `SP1_PROVER=network`
    - Generates proofs for any transaction violation
    - Requires PROVE tokens and network configuration
 
@@ -190,7 +190,7 @@ The Node.js backend service (`contracts/demo/backend/`) provides:
 cd contracts/demo/backend && npm install
 
 # 2. Build Rust binary
-cd ../../../script && cargo build --release --bin evm_prover_network
+cd ../../../script && cargo build --release --bin evm
 
 # 3. Start backend service
 cd ../contracts/demo/backend && npm start
@@ -212,6 +212,7 @@ cd .. && npm start
 Set your private key in `.env`:
 
 ```env
+SP1_PROVER=network
 NETWORK_PRIVATE_KEY=0x1234567890abcdef...
 ```
 
@@ -310,7 +311,7 @@ pub const INCLUDED_TX: &str = "0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d76
 Update RPC URL for different networks:
 
 ```sh
-cargo run --release --bin evm_prover_network -- --eth-rpc-url https://your-rpc-url --system groth16
+SP1_PROVER=network cargo run --release --bin evm -- --eth-rpc-url https://your-rpc-url --system groth16
 ```
 
 ## Example Workflows
@@ -404,7 +405,7 @@ forge test --match-test test_ValidTransactionInclusionProof
 
 4. **"Backend service not configured"**:
    - Set `NETWORK_PRIVATE_KEY` in root `.env` file
-   - Build Rust binary: `cargo build --release --bin evm_prover_network`
+   - Build Rust binary: `cargo build --release --bin evm`
    - Install backend dependencies: `cd demo/backend && npm install`
 
 ### Proof Generation Issues

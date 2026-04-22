@@ -1,10 +1,14 @@
-use sp1_sdk::{include_elf, HashableKey, Prover, ProverClient};
+use sp1_sdk::{include_elf, Elf, HashableKey, Prover, ProverClient, ProvingKey};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
-const ELF: &[u8] = include_elf!("tx-inclusion-precise-index-client");
+const ELF: Elf = include_elf!("tx-inclusion-precise-index-client");
 
-fn main() {
-    let prover = ProverClient::builder().cpu().build();
-    let (_, vk) = prover.setup(ELF);
-    println!("{}", vk.bytes32());
+#[tokio::main]
+async fn main() {
+    let prover = ProverClient::builder().cpu().build().await;
+    let pk = prover
+        .setup(ELF)
+        .await
+        .expect("failed to derive proving key");
+    println!("{}", pk.verifying_key().bytes32());
 }

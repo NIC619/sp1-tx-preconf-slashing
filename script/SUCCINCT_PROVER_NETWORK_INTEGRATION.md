@@ -81,17 +81,13 @@ NETWORK_PRIVATE_KEY=0x1234567890abcdef...
 **Cargo.toml Configuration:**
 ```toml
 [dependencies]
-sp1-sdk = { version = "5.2.1", default-features = false, features = ["network"] }
-
-[[bin]]
-name = "evm_prover_network"
-path = "src/bin/evm_prover_network.rs"
+sp1-sdk = { version = "6.1.0", default-features = false, features = ["network"] }
 ```
 
 **Key Points:**
 - `default-features = false`: Disables local proving dependencies
 - `features = ["network"]`: Enables network client functionality
-- SP1 version must be >= 5.2.1 for network support
+- Keep `sp1-sdk`, `sp1-build`, and `sp1-zkvm` on the same current SP1 release line
 
 ### 2. Environment Loading
 
@@ -140,19 +136,19 @@ let client = ProverClient::builder()
 
 ### Basic Usage
 
-The `evm_prover_network` binary now supports dynamic transaction hash specification:
+The unified `evm` binary supports dynamic transaction hash specification. Use `SP1_PROVER=network` for Succinct Network requests:
 
 ```bash
 # Use default hardcoded transaction
-cargo run --release --bin evm_prover_network -- --system groth16
+SP1_PROVER=network cargo run --release --bin evm -- --system groth16
 
 # Use custom transaction hash
-cargo run --release --bin evm_prover_network -- \
+SP1_PROVER=network cargo run --release --bin evm -- \
   --system groth16 \
   --transaction-hash 0xd25efc79e658a77d3a136a674c04be15a1d2dfc2a695412028a9e51f5c1ee900
 
 # Use custom RPC and transaction
-cargo run --release --bin evm_prover_network -- \
+SP1_PROVER=network cargo run --release --bin evm -- \
   --system groth16 \
   --eth-rpc-url https://your-custom-rpc.com \
   --transaction-hash 0xabcd1234...
@@ -171,7 +167,7 @@ cargo run --release --bin evm_prover_network -- \
 You can also set the transaction hash via environment variable:
 
 ```bash
-INCLUDED_TX=0xabcd1234... cargo run --release --bin evm_prover_network
+SP1_PROVER=network INCLUDED_TX=0xabcd1234... cargo run --release --bin evm -- --system groth16
 ```
 
 **Priority order**: `--transaction-hash` > `INCLUDED_TX` env var > hardcoded default
@@ -374,7 +370,7 @@ println!("Monitor at: https://explorer.mainnet.succinct.xyz/request/{}", request
 **Log Analysis:**
 ```bash
 # Enable verbose logging
-RUST_LOG=info cargo run --release --bin evm_prover_network
+SP1_PROVER=network RUST_LOG=info cargo run --release --bin evm -- --system groth16
 ```
 
 **Key Log Information:**
@@ -478,7 +474,7 @@ cargo run --release -- --execute
 cargo run --release -- --prove  
 
 # 3. Generate network EVM proof (final step)
-cargo run --release --bin evm_prover_network -- --system groth16
+SP1_PROVER=network cargo run --release --bin evm -- --system groth16
 ```
 
 ### 2. Environment Management

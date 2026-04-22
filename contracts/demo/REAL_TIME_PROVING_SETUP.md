@@ -11,7 +11,7 @@ React UI (Frontend) → Node.js Backend → Rust Binary → Succinct Network
 The system works as follows:
 1. **React UI**: User interface for requesting proofs
 2. **Node.js Backend**: API service that orchestrates proof generation
-3. **Rust Binary**: Your existing `evm_prover_network` binary
+3. **Rust Binary**: Your existing `evm` binary running with `SP1_PROVER=network`
 4. **Succinct Network**: The actual proof generation service
 
 ## Prerequisites
@@ -45,10 +45,10 @@ The system works as follows:
 ```bash
 # Build the Rust proof generator
 cd ../script
-cargo build --release --bin evm_prover_network
+cargo build --release --bin evm
 
 # Verify the binary exists
-ls -la target/release/evm_prover_network
+ls -la target/release/evm
 ```
 
 ### 3. Setup Backend Service
@@ -99,9 +99,9 @@ Create a startup script `start-realtime.sh`:
 echo "Starting real-time proof generation system..."
 
 # Check if Rust binary exists
-if [ ! -f "../script/target/release/evm_prover_network" ]; then
+if [ ! -f "../script/target/release/evm" ]; then
     echo "Building Rust binary..."
-    cd ../script && cargo build --release --bin evm_prover_network && cd -
+    cd ../script && cargo build --release --bin evm && cd -
 fi
 
 # Start backend in background
@@ -161,6 +161,7 @@ Visit `http://localhost:3000` and check the browser console for:
 ```env
 PORT=3001                                    # Backend port
 NETWORK_PRIVATE_KEY=0x...                   # Succinct network private key
+SP1_PROVER=network                          # Use the Succinct Prover Network
 SP1_RPC_URL=https://rpc.mainnet.succinct.xyz # Optional: custom RPC
 RUST_LOG=info                               # Rust logging level
 ```
@@ -213,11 +214,11 @@ node server.js  # Start with detailed logs
 ```bash
 # Test Rust binary directly with default transaction
 cd ../script
-NETWORK_PRIVATE_KEY=0x... cargo run --release --bin evm_prover_network -- --system groth16
+SP1_PROVER=network NETWORK_PRIVATE_KEY=0x... cargo run --release --bin evm -- --system groth16
 
 # Test Rust binary with custom transaction
 cd ../script
-NETWORK_PRIVATE_KEY=0x... cargo run --release --bin evm_prover_network -- \
+SP1_PROVER=network NETWORK_PRIVATE_KEY=0x... cargo run --release --bin evm -- \
   --system groth16 \
   --transaction-hash 0xd25efc79e658a77d3a136a674c04be15a1d2dfc2a695412028a9e51f5c1ee900
 

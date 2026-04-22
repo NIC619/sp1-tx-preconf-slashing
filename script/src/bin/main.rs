@@ -3,28 +3,15 @@ use alloy::providers::{Provider, RootProvider};
 use alloy_rpc_types::BlockId;
 use clap::Parser;
 use eyre::Result;
-use sp1_sdk::{include_elf, utils, ProverClient, SP1Stdin};
+use sp1_sdk::{include_elf, utils, Elf, Prover, ProverClient, ProvingKey, SP1Stdin};
+use tx_inclusion_precise_index::decode_public_values;
 use tx_inclusion_precise_index_lib::{
     generate_merkle_proof, TransactionInclusionInput, INCLUDED_TX,
 };
 
-// Import alloy-sol-types for ABI encoding
-use alloy_sol_types::SolType;
-
-// Define the Solidity-compatible struct for ABI decoding
-alloy_sol_types::sol! {
-    struct PublicValuesStruct {
-        bytes32 blockHash;
-        uint64 blockNumber;
-        bytes32 transactionHash;
-        uint64 transactionIndex;
-        bool isIncluded;
-        bytes32 verifiedAgainstRoot;
-    }
-}
 use url::Url;
 
-const ELF: &[u8] = include_elf!("tx-inclusion-precise-index-client");
+const ELF: Elf = include_elf!("tx-inclusion-precise-index-client");
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -97,14 +84,14 @@ async fn main() -> Result<()> {
     let mut stdin = SP1Stdin::new();
     stdin.write(&input_bytes);
 
-    let client = ProverClient::from_env();
+    let client = ProverClient::from_env().await;
 
     if args.execute {
         // Execution branch
         println!("Executing SP1 program...");
         let (output, report) = client
-            .execute(ELF, &stdin)
-            .run()
+            .execute(ELF, stdin)
+            .await
             .map_err(|e| eyre::eyre!("Execution failed: {}", e))?;
         println!(
             "Program executed with {} cycles",
@@ -112,12 +99,18 @@ async fn main() -> Result<()> {
         );
 
         // Decode the ABI-encoded output
-        let decoded = PublicValuesStruct::abi_decode(output.as_slice(), true)?;
+        let decoded = decode_public_values(output.as_slice())?;
 
         println!("\n=== EXECUTION RESULT ===");
-        println!("Block Hash: 0x{}", hex::encode(decoded.blockHash.as_slice()));
+        println!(
+            "Block Hash: 0x{}",
+            hex::encode(decoded.blockHash.as_slice())
+        );
         println!("Block Number: {}", decoded.blockNumber);
-        println!("Transaction Hash: 0x{}", hex::encode(decoded.transactionHash.as_slice()));
+        println!(
+            "Transaction Hash: 0x{}",
+            hex::encode(decoded.transactionHash.as_slice())
+        );
         println!("Transaction Index: {}", decoded.transactionIndex);
         println!("Is Included: {}", decoded.isIncluded);
         println!(
@@ -134,18 +127,19 @@ async fn main() -> Result<()> {
     } else {
         // Proof generation branch
         println!("\nGenerating ZK proof...");
-        let (pk, vk) = client.setup(ELF);
+        let pk = client
+            .setup(ELF)
+            .await
+            .map_err(|e| eyre::eyre!("Setup failed: {}", e))?;
         let proof = client
-            .prove(&pk, &stdin)
-            .run()
+            .prove(&pk, stdin)
+            .await
             .map_err(|e| eyre::eyre!("Proof generation failed: {}", e))?;
         println!("✅ Proof generated successfully!");
 
-        client.verify(&proof, &vk)?;
+        client.verify(&proof, pk.verifying_key(), None)?;
         println!("✅ Proof verified successfully!");
     }
 
     Ok(())
 }
-
-

@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 // Path to the Rust binary
-const RUST_BINARY_PATH = path.join(__dirname, '../../../target/release/evm_prover_network');
+const RUST_BINARY_PATH = path.join(__dirname, '../../../target/release/evm');
 
 /**
  * Generate a real-time proof using the Rust Succinct prover
@@ -42,7 +42,8 @@ app.post('/api/generate-proof', async (req, res) => {
     // Create modified environment
     const env = {
       ...process.env,
-      RUST_LOG: 'info'
+      RUST_LOG: 'info',
+      SP1_PROVER: 'network'
     };
 
     // Execute Rust binary

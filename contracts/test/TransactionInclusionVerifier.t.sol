@@ -122,8 +122,6 @@ contract TransactionInclusionPlonkTest is Test {
     }
 
     function test_ValidTransactionInclusionProof() public {
-        // Plonk proof has not been generated yet.
-        vm.skip(true);
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         vm.mockCall(verifier, abi.encodeWithSelector(SP1VerifierGateway.verifyProof.selector), abi.encode(true));
@@ -168,9 +166,6 @@ contract TransactionInclusionPlonkTest is Test {
     }
 
     function testRevert_InvalidTransactionInclusionProof() public {
-        // Plonk proof has not been generated yet.
-        vm.skip(true);
-
         vm.expectRevert();
 
         SP1ProofFixtureJson memory fixture = loadFixture();

@@ -16,10 +16,6 @@ path = "src/bin/evm.rs"
 name = "vkey"
 path = "src/bin/vkey.rs"
 
-[[bin]]
-name = "evm_prover_network"
-path = "src/bin/evm_prover_network.rs"
-
 
 [dependencies]
 # alloy - only what's needed for the CLI
@@ -36,8 +32,8 @@ dotenv = "0.15.0"
 clap = { version = "4.0", features = ["derive"] }
 
 # sp1
-sp1-sdk = { version = "5.2.1", default-features = false, features = ["network"] }
-alloy-sol-types = "0.8.15"
+sp1-sdk = { version = "6.1.0", default-features = false, features = ["network"] }
+alloy-sol-types = { workspace = true }
 hex = "0.4.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -46,4 +42,4 @@ serde_json = "1.0"
 tx-inclusion-precise-index-lib = { path = "../lib" }
 
 [build-dependencies]
-sp1-build = "5.0.0"
+sp1-build = "6.1.0"
