@@ -16,9 +16,6 @@ on:
       - published
       - prereleased
 
-env:
-  FOUNDRY_OFFLINE: true
-
 jobs:
   network-proof-e2e:
     name: Generate Network Proof And Verify Fixture
@@ -46,17 +43,14 @@ jobs:
         with:
           version: nightly
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-            ~/.sp1
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-rust-
+          workspaces: |
+            . -> target
+          cache-directories: |
+            ~/.cargo/bin/
+          shared-key: sp1-host-rust-1.91.0
 
       - name: Cache Foundry dependencies
         uses: actions/cache@v4

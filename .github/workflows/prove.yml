@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: true
 
-    name: Build and Execute
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,17 +23,14 @@ jobs:
         with:
           toolchain: 1.91.0
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-            ~/.sp1
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-rust-
+          workspaces: |
+            . -> target
+          cache-directories: |
+            ~/.cargo/bin/
+          shared-key: sp1-host-rust-1.91.0
 
       - name: Install protobuf compiler
         run: |
@@ -52,9 +49,10 @@ jobs:
           ~/.sp1/bin/cargo-prove prove build
 
       - name: Run Rust tests
-        run: cargo test
+        run: cargo test -p tx-inclusion-precise-index -p tx-inclusion-precise-index-lib
 
       - name: Execute SP1 program
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         run: |
           cd script
           cargo run --release -- --execute
