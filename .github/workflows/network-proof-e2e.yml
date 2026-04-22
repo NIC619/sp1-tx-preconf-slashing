@@ -17,7 +17,6 @@ on:
       - prereleased
 
 env:
-  FOUNDRY_PROFILE: ci
   FOUNDRY_OFFLINE: true
 
 jobs:
@@ -69,6 +68,11 @@ jobs:
           key: ${{ runner.os }}-foundry-${{ hashFiles('contracts/foundry.toml', 'contracts/lib/**') }}
           restore-keys: |
             ${{ runner.os }}-foundry-
+
+      - name: Install protobuf compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install SP1 toolchain
         run: |
