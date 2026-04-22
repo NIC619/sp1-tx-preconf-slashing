@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {TransactionInclusionVerifier, PublicValuesStruct} from "./TransactionInclusionVerifier.sol";
+import {ITransactionInclusionVerifier, PublicValuesStruct} from "./TransactionInclusionVerifier.sol";
 
 struct InclusionCommitment {
     uint64 blockNumber;
@@ -135,33 +135,25 @@ contract TxInclusionPreciseSlasher {
             revert InsufficientProposerBond();
         }
 
-        (
-            ,
-            uint64 blockNumber,
-            bytes32 transactionHash,
-            uint64 transactionIndex,
-            bool isIncluded,
-        ) = TransactionInclusionVerifier(INCLUSION_VERIFIER).verifyTransactionInclusionView(
-            publicValues, 
-            proofBytes
-        );
+        PublicValuesStruct memory proofOutput =
+            ITransactionInclusionVerifier(INCLUSION_VERIFIER).verifyTransactionInclusionView(publicValues, proofBytes);
 
-        if (blockNumber != commitment.blockNumber) {
+        if (proofOutput.blockNumber != commitment.blockNumber) {
             revert BlockNumberMismatch();
         }
 
         // Proof must show that a transaction WAS included at the promised position
-        if (!isIncluded) {
+        if (!proofOutput.isIncluded) {
             revert ProofMustDemonstrateInclusion();
         }
 
         // Check that the included transaction is different from the promised one
-        if (transactionHash == commitment.transactionHash) {
+        if (proofOutput.transactionHash == commitment.transactionHash) {
             revert TransactionWasIncluded();
         }
 
         // Verify the transaction was included at the exact promised position
-        if (transactionIndex != commitment.transactionIndex) {
+        if (proofOutput.transactionIndex != commitment.transactionIndex) {
             revert TransactionIndexMismatch();
         }
 
@@ -172,6 +164,10 @@ contract TxInclusionPreciseSlasher {
         require(success, "Burn failed");
 
         emit ProposerSlashed(proposer, commitmentHash, SLASH_AMOUNT, msg.sender);
+    }
+
+    function hashCommitment(InclusionCommitment calldata commitment) external view returns (bytes32) {
+        return _hashCommitment(commitment);
     }
 
     function _hashCommitment(InclusionCommitment calldata commitment) internal view returns (bytes32) {

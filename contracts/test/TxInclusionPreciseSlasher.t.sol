@@ -1,22 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {TxInclusionPreciseSlasher, InclusionCommitment} from "../src/TxInclusionPreciseSlasher.sol";
-import {TransactionInclusionVerifier, PublicValuesStruct} from "../src/TransactionInclusionVerifier.sol";
-import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
+import {ITransactionInclusionVerifier, PublicValuesStruct} from "../src/TransactionInclusionVerifier.sol";
 
-contract MockTransactionInclusionVerifier {
-    struct MockReturn {
-        bytes32 blockHash;
-        uint64 blockNumber;
-        bytes32 transactionHash;
-        uint64 transactionIndex;
-        bool isIncluded;
-        bytes32 verifiedAgainstRoot;
-    }
-
-    MockReturn public mockReturn = MockReturn({
+contract MockTransactionInclusionVerifier is ITransactionInclusionVerifier {
+    PublicValuesStruct internal mockReturn = PublicValuesStruct({
         blockHash: bytes32(uint256(1)),
         blockNumber: uint64(100),
         transactionHash: bytes32(uint256(2)),
@@ -25,23 +15,16 @@ contract MockTransactionInclusionVerifier {
         verifiedAgainstRoot: bytes32(uint256(3))
     });
 
-    function setMockReturn(MockReturn memory _mockReturn) external {
+    function setMockReturn(PublicValuesStruct memory _mockReturn) external {
         mockReturn = _mockReturn;
     }
 
     function verifyTransactionInclusionView(bytes calldata, bytes calldata)
         external
         view
-        returns (bytes32, uint64, bytes32, uint64, bool, bytes32)
+        returns (PublicValuesStruct memory)
     {
-        return (
-            mockReturn.blockHash,
-            mockReturn.blockNumber,
-            mockReturn.transactionHash,
-            mockReturn.transactionIndex,
-            mockReturn.isIncluded,
-            mockReturn.verifiedAgainstRoot
-        );
+        return mockReturn;
     }
 }
 
@@ -49,15 +32,23 @@ contract TxInclusionPreciseSlasherTest is Test {
     TxInclusionPreciseSlasher public slasher;
     MockTransactionInclusionVerifier public mockVerifier;
 
-    uint256 public proposerPrivateKey = 0x1;
-    address public proposer = vm.addr(proposerPrivateKey);
-    address public user = address(0x2);
+    uint256 internal proposerPrivateKey = 0x1;
+    address internal proposer;
+    address internal user = address(0x2);
 
-    uint256 constant WITHDRAWAL_DELAY = 1 days;
-    uint256 constant SLASH_AMOUNT = 0.1 ether;
-    uint256 constant MIN_BOND_AMOUNT = 0.1 ether;
+    uint256 internal constant WITHDRAWAL_DELAY = 1 days;
+    uint256 internal constant SLASH_AMOUNT = 0.1 ether;
+    uint256 internal constant MIN_BOND_AMOUNT = 0.1 ether;
+    bytes32 internal constant PROOF_ROOT = bytes32(uint256(3));
+    bytes32 internal constant PROOF_BLOCK_HASH = bytes32(uint256(1));
+    bytes32 internal constant COMMITTED_TRANSACTION_HASH = bytes32(uint256(0x456));
+    bytes32 internal constant INCLUDED_TRANSACTION_HASH = bytes32(uint256(0x789));
+    uint64 internal constant COMMITTED_BLOCK_NUMBER = 100;
+    uint64 internal constant COMMITTED_TRANSACTION_INDEX = 5;
 
     function setUp() public {
+        proposer = vm.addr(proposerPrivateKey);
+
         mockVerifier = new MockTransactionInclusionVerifier();
         slasher = new TxInclusionPreciseSlasher(address(mockVerifier), WITHDRAWAL_DELAY);
 
@@ -74,116 +65,88 @@ contract TxInclusionPreciseSlasherTest is Test {
     }
 
     function test_AddBond() public {
-        vm.startPrank(proposer);
-        
-        uint256 bondAmount = 1 ether;
-        slasher.addBond{value: bondAmount}();
+        vm.prank(proposer);
+        slasher.addBond{value: 1 ether}();
 
-        assertEq(slasher.getProposerBond(proposer), bondAmount);
-        vm.stopPrank();
+        assertEq(slasher.getProposerBond(proposer), 1 ether);
     }
 
     function test_AddBond_MultipleDeposits() public {
         vm.startPrank(proposer);
-        
         slasher.addBond{value: 0.5 ether}();
-        assertEq(slasher.getProposerBond(proposer), 0.5 ether);
-
         slasher.addBond{value: 0.3 ether}();
-        assertEq(slasher.getProposerBond(proposer), 0.8 ether);
-
         vm.stopPrank();
+
+        assertEq(slasher.getProposerBond(proposer), 0.8 ether);
     }
 
     function testRevert_AddBond_InsufficientAmount() public {
-        vm.startPrank(proposer);
-        
+        vm.prank(proposer);
         vm.expectRevert(TxInclusionPreciseSlasher.InsufficientBondAmount.selector);
         slasher.addBond{value: 0.05 ether}();
-
-        vm.stopPrank();
     }
 
     function test_InitiateWithdrawal() public {
-        vm.startPrank(proposer);
-        
-        slasher.addBond{value: 1 ether}();
-        
-        uint256 withdrawalAmount = 0.5 ether;
-        slasher.initiateWithdrawal(withdrawalAmount);
+        _bondProposer(1 ether);
 
-        assertEq(slasher.getPendingWithdrawal(proposer), withdrawalAmount);
+        vm.prank(proposer);
+        slasher.initiateWithdrawal(0.5 ether);
+
+        assertEq(slasher.getPendingWithdrawal(proposer), 0.5 ether);
         assertEq(slasher.getWithdrawalTimestamp(proposer), block.timestamp + WITHDRAWAL_DELAY);
-        assertEq(slasher.getProposerBond(proposer), 1 ether); // Bond still intact
-
-        vm.stopPrank();
+        assertEq(slasher.getProposerBond(proposer), 1 ether);
     }
 
     function testRevert_InitiateWithdrawal_InsufficientBond() public {
-        vm.startPrank(proposer);
-        
-        slasher.addBond{value: 0.5 ether}();
-        
+        _bondProposer(0.5 ether);
+
+        vm.prank(proposer);
         vm.expectRevert(TxInclusionPreciseSlasher.InsufficientProposerBond.selector);
         slasher.initiateWithdrawal(1 ether);
-
-        vm.stopPrank();
     }
 
     function test_CompleteWithdrawal() public {
-        vm.startPrank(proposer);
-        
-        uint256 bondAmount = 1 ether;
-        uint256 withdrawalAmount = 0.5 ether;
-        
-        slasher.addBond{value: bondAmount}();
-        slasher.initiateWithdrawal(withdrawalAmount);
+        _bondProposer(1 ether);
+
+        vm.prank(proposer);
+        slasher.initiateWithdrawal(0.5 ether);
 
         vm.warp(block.timestamp + WITHDRAWAL_DELAY + 1);
 
         uint256 balanceBefore = proposer.balance;
+        vm.prank(proposer);
         slasher.completeWithdrawal();
 
-        assertEq(slasher.getProposerBond(proposer), bondAmount - withdrawalAmount);
+        assertEq(slasher.getProposerBond(proposer), 0.5 ether);
         assertEq(slasher.getPendingWithdrawal(proposer), 0);
         assertEq(slasher.getWithdrawalTimestamp(proposer), 0);
-        assertEq(proposer.balance, balanceBefore + withdrawalAmount);
-
-        vm.stopPrank();
+        assertEq(proposer.balance, balanceBefore + 0.5 ether);
     }
 
     function testRevert_CompleteWithdrawal_NoWithdrawalInitiated() public {
-        vm.startPrank(proposer);
-        
+        vm.prank(proposer);
         vm.expectRevert(TxInclusionPreciseSlasher.NoWithdrawalInitiated.selector);
         slasher.completeWithdrawal();
-
-        vm.stopPrank();
     }
 
     function testRevert_CompleteWithdrawal_DelayNotMet() public {
-        vm.startPrank(proposer);
-        
-        slasher.addBond{value: 1 ether}();
+        _bondProposer(1 ether);
+
+        vm.prank(proposer);
         slasher.initiateWithdrawal(0.5 ether);
 
+        vm.prank(proposer);
         vm.expectRevert(TxInclusionPreciseSlasher.WithdrawalDelayNotMet.selector);
         slasher.completeWithdrawal();
-
-        vm.stopPrank();
     }
 
     function test_CreateCommitmentHash() public view {
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x123)),
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
+        );
 
         bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
         bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
         bytes32 structHash = keccak256(
             abi.encode(
                 commitmentTypeHash,
@@ -194,478 +157,211 @@ contract TxInclusionPreciseSlasherTest is Test {
             )
         );
 
-        bytes32 expectedHash = keccak256(
-            abi.encodePacked("\x19\x01", domainSeparator, structHash)
-        );
-
-        // This verifies our understanding of the hash structure
-        assertTrue(expectedHash != bytes32(0));
+        bytes32 expectedHash = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        assertEq(slasher.hashCommitment(commitment), expectedHash);
     }
 
-    function test_SignCommitment() public {
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x123)),
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+    function test_SignCommitment() public view {
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
-
-        address recoveredSigner = ecrecover(digest, v, r, s);
-        assertEq(recoveredSigner, proposer);
+        bytes32 digest = slasher.hashCommitment(commitment);
+        assertTrue(digest != bytes32(0));
     }
 
     function test_Slash_Success() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)), // Different from mock return
-            transactionIndex: 5, // Same as what proof will show
-            deadline: block.timestamp + 3600
-        });
-
-        // Set mock to return that a DIFFERENT transaction was included at the promised position
-        mockVerifier.setMockReturn(MockTransactionInclusionVerifier.MockReturn({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: uint64(100),
-            transactionHash: bytes32(uint256(0x789)), // Different transaction included
-            transactionIndex: uint64(5), // Same position as promised
-            isIncluded: true, // Proof shows transaction WAS included
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
+        mockVerifier.setMockReturn(_makeProofOutput(
+            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
+        ));
 
-        bytes memory publicValues = abi.encode(PublicValuesStruct({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x789)), // Different transaction
-            transactionIndex: 5, // Same position as promised
-            isIncluded: true, // Transaction WAS included
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
-        
         uint256 proposerBondBefore = slasher.getProposerBond(proposer);
-        
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
+
+        vm.prank(user);
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
 
         assertEq(slasher.getProposerBond(proposer), proposerBondBefore - SLASH_AMOUNT);
-        
-        bytes32 commitmentHash = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        assertTrue(slasher.isCommitmentSlashed(commitmentHash));
-
-        vm.stopPrank();
+        assertTrue(slasher.isCommitmentSlashed(slasher.hashCommitment(commitment)));
     }
 
     function testRevert_Slash_CommitmentExpired() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5,
-            deadline: block.timestamp - 1 // Expired
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp - 1
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
-
-        bytes memory publicValues = new bytes(32);
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
+        vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.CommitmentExpired.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-        vm.stopPrank();
+        slasher.slash(commitment, proposer, v, r, s, new bytes(32), _dummyProof());
     }
 
     function testRevert_Slash_InvalidSignature() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
-
-        // Sign with wrong private key
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
+        );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x999, bytes32(uint256(0x123)));
 
-        bytes memory publicValues = new bytes(32);
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
+        vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.InvalidSignature.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-        vm.stopPrank();
+        slasher.slash(commitment, proposer, v, r, s, new bytes(32), _dummyProof());
     }
 
     function testRevert_Slash_InsufficientBond() public {
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
-
-        bytes memory publicValues = new bytes(32);
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
+        vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.InsufficientProposerBond.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-        vm.stopPrank();
+        slasher.slash(commitment, proposer, v, r, s, new bytes(32), _dummyProof());
     }
 
     function testRevert_Slash_AlreadySlashed() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        // Set mock to return valid inclusion proof for a different transaction
-        mockVerifier.setMockReturn(MockTransactionInclusionVerifier.MockReturn({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: uint64(100),
-            transactionHash: bytes32(uint256(0x789)), // Different transaction included
-            transactionIndex: uint64(5), // Same position as promised
-            isIncluded: true, // Valid proof showing inclusion
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)), // Different from what was included
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
-
-        bytes memory publicValues = abi.encode(PublicValuesStruct({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x789)), // Different transaction
-            transactionIndex: 5, // Same position as promised
-            isIncluded: true, // Valid inclusion proof
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        bytes memory proofBytes = new bytes(32);
+        mockVerifier.setMockReturn(_makeProofOutput(
+            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
+        ));
 
         vm.startPrank(user);
-        
-        // First slash should succeed
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-
-        // Second slash should fail with CommitmentAlreadySlashed
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
         vm.expectRevert(TxInclusionPreciseSlasher.CommitmentAlreadySlashed.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
         vm.stopPrank();
     }
 
     function testRevert_Slash_TransactionWasIncluded() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        // Set mock to return that transaction WAS included at the promised position
-        mockVerifier.setMockReturn(MockTransactionInclusionVerifier.MockReturn({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: uint64(100),
-            transactionHash: bytes32(uint256(0x456)), // Same as commitment
-            transactionIndex: uint64(5), // Same as commitment
-            isIncluded: true, // Transaction WAS included
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
+        mockVerifier.setMockReturn(_makeProofOutput(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
+        ));
 
-        bytes memory publicValues = abi.encode(PublicValuesStruct({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5,
-            isIncluded: true,
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
+        vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.TransactionWasIncluded.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-        vm.stopPrank();
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
     }
 
     function testRevert_Slash_ProofMustDemonstrateInclusion() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        // Set mock to return isIncluded = false (invalid proof)
-        mockVerifier.setMockReturn(MockTransactionInclusionVerifier.MockReturn({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: uint64(100),
-            transactionHash: bytes32(uint256(0x789)),
-            transactionIndex: uint64(5),
-            isIncluded: false, // This should trigger the error
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
+        mockVerifier.setMockReturn(_makeProofOutput(
+            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, false
+        ));
 
-        bytes memory publicValues = abi.encode(PublicValuesStruct({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x789)),
-            transactionIndex: 5,
-            isIncluded: false, // This should cause the revert
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
+        vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.ProofMustDemonstrateInclusion.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-        vm.stopPrank();
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(false), _dummyProof());
     }
 
     function testRevert_Slash_TransactionIndexMismatch() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        // Set mock to return different transaction index
-        mockVerifier.setMockReturn(MockTransactionInclusionVerifier.MockReturn({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: uint64(100),
-            transactionHash: bytes32(uint256(0x789)),
-            transactionIndex: uint64(7), // Different from commitment
-            isIncluded: true,
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5, // Different from proof
-            deadline: block.timestamp + 3600
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
+        mockVerifier.setMockReturn(_makeProofOutput(
+            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX + 2, true
+        ));
 
-        bytes memory publicValues = abi.encode(PublicValuesStruct({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: 100,
-            transactionHash: bytes32(uint256(0x789)),
-            transactionIndex: 7, // Different from commitment
-            isIncluded: true,
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
+        vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.TransactionIndexMismatch.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-        vm.stopPrank();
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
     }
 
     function testRevert_Slash_BlockNumberMismatch() public {
-        vm.startPrank(proposer);
-        slasher.addBond{value: 1 ether}();
-        vm.stopPrank();
+        _bondProposer(1 ether);
 
-        // Set mock to return different block number
-        mockVerifier.setMockReturn(MockTransactionInclusionVerifier.MockReturn({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: uint64(101), // Different from commitment
-            transactionHash: bytes32(uint256(0x789)),
-            transactionIndex: uint64(5),
-            isIncluded: true,
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        InclusionCommitment memory commitment = InclusionCommitment({
-            blockNumber: 100, // Different from proof
-            transactionHash: bytes32(uint256(0x456)),
-            transactionIndex: 5,
-            deadline: block.timestamp + 3600
-        });
-
-        bytes32 domainSeparator = slasher.DOMAIN_SEPARATOR();
-        bytes32 commitmentTypeHash = slasher.COMMITMENT_TYPEHASH();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                commitmentTypeHash,
-                commitment.blockNumber,
-                commitment.transactionHash,
-                commitment.transactionIndex,
-                commitment.deadline
-            )
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(proposerPrivateKey, digest);
+        mockVerifier.setMockReturn(_makeProofOutput(
+            COMMITTED_BLOCK_NUMBER + 1, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
+        ));
 
-        bytes memory publicValues = abi.encode(PublicValuesStruct({
-            blockHash: bytes32(uint256(1)),
-            blockNumber: 101, // Different from commitment
-            transactionHash: bytes32(uint256(0x789)),
-            transactionIndex: 5,
-            isIncluded: true,
-            verifiedAgainstRoot: bytes32(uint256(3))
-        }));
-
-        bytes memory proofBytes = new bytes(32);
-
-        vm.startPrank(user);
+        vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.BlockNumberMismatch.selector);
-        slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
-        vm.stopPrank();
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
+    }
+
+    function _bondProposer(uint256 amount) internal {
+        vm.prank(proposer);
+        slasher.addBond{value: amount}();
+    }
+
+    function _signCommitment(InclusionCommitment memory commitment)
+        internal
+        view
+        returns (uint8 v, bytes32 r, bytes32 s)
+    {
+        return vm.sign(proposerPrivateKey, slasher.hashCommitment(commitment));
+    }
+
+    function _makeCommitment(
+        uint64 blockNumber,
+        bytes32 transactionHash,
+        uint64 transactionIndex,
+        uint256 deadline
+    ) internal pure returns (InclusionCommitment memory) {
+        return InclusionCommitment({
+            blockNumber: blockNumber,
+            transactionHash: transactionHash,
+            transactionIndex: transactionIndex,
+            deadline: deadline
+        });
+    }
+
+    function _makeProofOutput(uint64 blockNumber, bytes32 transactionHash, uint64 transactionIndex, bool isIncluded)
+        internal
+        pure
+        returns (PublicValuesStruct memory)
+    {
+        return PublicValuesStruct({
+            blockHash: PROOF_BLOCK_HASH,
+            blockNumber: blockNumber,
+            transactionHash: transactionHash,
+            transactionIndex: transactionIndex,
+            isIncluded: isIncluded,
+            verifiedAgainstRoot: PROOF_ROOT
+        });
+    }
+
+    function _encodeProofOutput(bool isIncluded) internal pure returns (bytes memory) {
+        return abi.encode(_makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, isIncluded));
+    }
+
+    function _dummyProof() internal pure returns (bytes memory) {
+        return new bytes(32);
     }
 }

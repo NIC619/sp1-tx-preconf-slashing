@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {TransactionInclusionVerifier} from "../src/TransactionInclusionVerifier.sol";
+import {PublicValuesStruct, TransactionInclusionVerifier} from "../src/TransactionInclusionVerifier.sol";
 
 // @dev Name of struct params need to follow alphabetic order for abi.decode
 struct SP1ProofFixtureJson {
@@ -126,22 +126,17 @@ contract VerifyProofOnchain is Script {
         console2.log("Calling verifyTransactionInclusionView...");
 
         try verifier.verifyTransactionInclusionView(fixture.publicValues, fixture.proof) returns (
-            bytes32 blockHash,
-            uint64 blockNumber,
-            bytes32 transactionHash,
-            uint64 transactionIndex,
-            bool isIncluded,
-            bytes32 verifiedAgainstRoot
+            PublicValuesStruct memory publicValues
         ) {
             console2.log("");
             console2.log("=== VIEW VERIFICATION SUCCESSFUL! ===");
             console2.log("Returned values:");
-            console2.log("- Block Hash:", vm.toString(blockHash));
-            console2.log("- Block Number:", blockNumber);
-            console2.log("- Transaction Hash:", vm.toString(transactionHash));
-            console2.log("- Transaction Index:", transactionIndex);
-            console2.log("- Is Included:", isIncluded);
-            console2.log("- Verified Against Root:", vm.toString(verifiedAgainstRoot));
+            console2.log("- Block Hash:", vm.toString(publicValues.blockHash));
+            console2.log("- Block Number:", publicValues.blockNumber);
+            console2.log("- Transaction Hash:", vm.toString(publicValues.transactionHash));
+            console2.log("- Transaction Index:", publicValues.transactionIndex);
+            console2.log("- Is Included:", publicValues.isIncluded);
+            console2.log("- Verified Against Root:", vm.toString(publicValues.verifiedAgainstRoot));
             console2.log("");
             console2.log("SUCCESS VIEW VERIFICATION SUCCESSFUL!");
             

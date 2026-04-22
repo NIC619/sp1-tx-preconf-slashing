@@ -14,6 +14,7 @@ These fixtures are automatically updated when new proofs are generated and shoul
 - Backend service (`contracts/demo/backend/server.js`) for fallback scenarios
 - Rust proof generation script (`script/src/bin/evm.rs`)
 - Demo UI for real-time proof scenarios
+- Generated-fixture E2E runner (`scripts/run_generated_fixture_e2e.sh`)
 
 ### 🧪 Stable Test Fixtures (Never Change)
 These fixtures contain **fixed values** that never change and should be used for **tests** and **local simulations**:
@@ -59,6 +60,17 @@ string memory path = string.concat(root, "/src/fixtures/groth16-fixture.json");
 ```javascript
 const fixturePath = path.join(__dirname, '../fixtures', `${proofSystem}-fixture.json`);
 ```
+
+### For End-to-End Fixture Verification
+✅ **DO:** Generate a fresh fixture into a temporary path and point Foundry at it
+```bash
+./scripts/run_generated_fixture_e2e.sh groth16
+```
+
+This flow:
+- generates a new proof fixture with `cargo run --release --bin evm`
+- writes the fixture to a temporary JSON file
+- runs `contracts/test/GeneratedFixtureE2E.t.sol` with `TX_INCLUSION_E2E_FIXTURE_PATH` set to that file
 
 ### For Demo UI
 ✅ **DO:** Use hardcoded stable constants

@@ -38,6 +38,8 @@ struct EVMArgs {
     eth_rpc_url: Url,
     #[arg(long, value_enum, default_value = "groth16")]
     system: ProofSystem,
+    #[arg(long, help = "Optional output path for the generated fixture JSON")]
+    output_path: Option<std::path::PathBuf>,
     #[arg(
         long,
         help = "Transaction hash to generate proof for (overrides default)"
@@ -146,7 +148,12 @@ async fn main() -> Result<()> {
         println!("✅ EVM-compatible proof generated successfully locally!");
     }
 
-    create_proof_fixture(&proof, pk.verifying_key(), args.system)?;
+    create_proof_fixture(
+        &proof,
+        pk.verifying_key(),
+        args.system,
+        args.output_path.as_deref(),
+    )?;
 
     Ok(())
 }
@@ -156,6 +163,7 @@ fn create_proof_fixture(
     proof: &sp1_sdk::SP1ProofWithPublicValues,
     vk: &sp1_sdk::SP1VerifyingKey,
     system: ProofSystem,
+    output_path: Option<&std::path::Path>,
 ) -> Result<()> {
     let fixture = fixture_from_proof(proof, vk)?;
     // The verification key is used to verify that the proof corresponds to the execution of the
@@ -175,7 +183,9 @@ fn create_proof_fixture(
     );
 
     // Save the fixture to a file.
-    let fixture_file_path = default_fixture_output_path(&format!("{:?}", system).to_lowercase());
+    let fixture_file_path = output_path
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| default_fixture_output_path(&format!("{:?}", system).to_lowercase()));
     std::fs::create_dir_all(
         fixture_file_path
             .parent()

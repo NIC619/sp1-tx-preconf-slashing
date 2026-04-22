@@ -12,13 +12,19 @@ struct PublicValuesStruct {
     bytes32 verifiedAgainstRoot;
 }
 
+interface ITransactionInclusionVerifier {
+    function verifyTransactionInclusionView(bytes calldata _publicValues, bytes calldata _proofBytes)
+        external
+        view
+        returns (PublicValuesStruct memory);
+}
+
 /// @title TransactionInclusionVerifier
 /// @author Your Project
 /// @notice This contract implements verification of ZK proofs for transaction inclusion
 ///         at precise indices in Ethereum blocks using SP1.
 contract TransactionInclusionVerifier {
-    /// @notice The owner of the contract (deployer).
-    address public owner;
+    address public immutable owner;
 
     /// @notice The address of the SP1 verifier contract.
     /// @dev This can either be a specific SP1Verifier for a specific version, or the
@@ -29,6 +35,8 @@ contract TransactionInclusionVerifier {
 
     /// @notice The verification key for the transaction inclusion program.
     bytes32 public txInclusionProgramVKey;
+
+    error OnlyOwner();
 
     /// @notice Event emitted when a transaction inclusion proof is verified
     event TransactionInclusionVerified(
@@ -44,7 +52,9 @@ contract TransactionInclusionVerifier {
 
     /// @notice Modifier to restrict access to owner only
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can call this function");
+        if (msg.sender != owner) {
+            revert OnlyOwner();
+        }
         _;
     }
 
@@ -74,12 +84,8 @@ contract TransactionInclusionVerifier {
             bytes32 verifiedAgainstRoot
         )
     {
-        // Verify the proof using SP1
-        ISP1Verifier(verifier).verifyProof(txInclusionProgramVKey, _publicValues, _proofBytes);
-        
-        // Decode the public values
-        PublicValuesStruct memory publicValues = abi.decode(_publicValues, (PublicValuesStruct));
-        
+        PublicValuesStruct memory publicValues = _verifyProofAndDecodePublicValues(_publicValues, _proofBytes);
+
         // Emit verification event
         emit TransactionInclusionVerified(
             publicValues.blockHash,
@@ -102,38 +108,13 @@ contract TransactionInclusionVerifier {
     /// @notice View function to verify transaction inclusion without state changes.
     /// @param _publicValues The encoded public values.
     /// @param _proofBytes The encoded proof.
-    /// @return blockHash The hash of the block containing the transaction
-    /// @return blockNumber The number of the block containing the transaction
-    /// @return transactionHash The hash of the transaction being verified
-    /// @return transactionIndex The index of the transaction within the block
-    /// @return isIncluded Whether the transaction is included in the block
-    /// @return verifiedAgainstRoot The merkle root that the proof was verified against
+    /// @return publicValues The decoded public values committed by the SP1 program.
     function verifyTransactionInclusionView(bytes calldata _publicValues, bytes calldata _proofBytes)
         public
         view
-        returns (
-            bytes32 blockHash,
-            uint64 blockNumber,
-            bytes32 transactionHash,
-            uint64 transactionIndex,
-            bool isIncluded,
-            bytes32 verifiedAgainstRoot
-        )
+        returns (PublicValuesStruct memory)
     {
-        // Verify the proof using SP1
-        ISP1Verifier(verifier).verifyProof(txInclusionProgramVKey, _publicValues, _proofBytes);
-        
-        // Decode the public values
-        PublicValuesStruct memory publicValues = abi.decode(_publicValues, (PublicValuesStruct));
-        
-        return (
-            publicValues.blockHash,
-            publicValues.blockNumber,
-            publicValues.transactionHash,
-            publicValues.transactionIndex,
-            publicValues.isIncluded,
-            publicValues.verifiedAgainstRoot
-        );
+        return _verifyProofAndDecodePublicValues(_publicValues, _proofBytes);
     }
 
     /// @notice Update the verification key for the transaction inclusion program.
@@ -143,5 +124,18 @@ contract TransactionInclusionVerifier {
         bytes32 oldVKey = txInclusionProgramVKey;
         txInclusionProgramVKey = _newVKey;
         emit VerificationKeyUpdated(oldVKey, _newVKey);
+    }
+
+    function decodePublicValues(bytes calldata _publicValues) external pure returns (PublicValuesStruct memory) {
+        return abi.decode(_publicValues, (PublicValuesStruct));
+    }
+
+    function _verifyProofAndDecodePublicValues(bytes calldata _publicValues, bytes calldata _proofBytes)
+        internal
+        view
+        returns (PublicValuesStruct memory)
+    {
+        ISP1Verifier(verifier).verifyProof(txInclusionProgramVKey, _publicValues, _proofBytes);
+        return abi.decode(_publicValues, (PublicValuesStruct));
     }
 }

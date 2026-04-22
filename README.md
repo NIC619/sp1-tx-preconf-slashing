@@ -136,6 +136,7 @@ For direct interaction with the ZK proof system:
 | `SP1_PROVER=network cargo run --release --bin evm -- --system groth16` | Prover network EVM proofs (recommended) | Network key + PROVE tokens |
 | `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...` | Generate proof for specific transaction | Network key + PROVE tokens |
 | `cargo run --release --bin evm -- --system groth16` | Local EVM proofs | Local prover resources |
+| `./scripts/run_generated_fixture_e2e.sh groth16` | Generate a fresh fixture and verify it through Foundry | RPC access + prover resources |
 | `cargo run --release --bin vkey` | Get verification key | Local |
 
 ### Utility Scripts
