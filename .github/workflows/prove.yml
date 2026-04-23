@@ -43,6 +43,11 @@ jobs:
           ~/.sp1/bin/sp1up 
           ~/.sp1/bin/cargo-prove prove --version
 
+      - name: Install SP1 native runner override
+        run: |
+          cargo install sp1-core-executor-runner-binary --version 6.1.0 --root "$RUNNER_TEMP/sp1-core-runner" --force
+          echo "SP1_CORE_RUNNER_OVERRIDE_BINARY=$RUNNER_TEMP/sp1-core-runner/bin/sp1-core-executor-runner-binary" >> "$GITHUB_ENV"
+
       - name: Build SP1 program
         run: |
           cd program
