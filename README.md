@@ -22,11 +22,31 @@ The system enables:
 
 ## Requirements
 
-- [Rust](https://rustup.rs/)
+- [Rust](https://rustup.rs/) `1.91.1`
 - [SP1](https://docs.succinct.xyz/docs/sp1/getting-started/install)
 - [Foundry](https://getfoundry.sh/) (for smart contract testing)
 - [Node.js](https://nodejs.org/) (for demo UI and backend)
 - Docker (for EVM-compatible proof generation)
+- `protoc` / protobuf compiler available on `PATH` for some Rust builds
+
+### Local Toolchain Notes
+
+- The repo is pinned to Rust `1.91.1` via [rust-toolchain](./rust-toolchain).
+- Some SP1/network-related Rust dependencies require `protoc`.
+
+Examples:
+
+```sh
+# Rust
+rustup toolchain install 1.91.1
+
+# macOS (Homebrew)
+brew install protobuf
+
+# verify
+rustup show active-toolchain
+protoc --version
+```
 
 ## Project Structure
 
