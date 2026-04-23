@@ -105,7 +105,6 @@ echo "Running Foundry verification against generated fixture"
 
 pushd "${ROOT_DIR}/contracts" >/dev/null
 TX_INCLUSION_E2E_FIXTURE_PATH="${FIXTURE_PATH}" \
-FOUNDRY_OFFLINE=true \
 ~/.foundry/bin/forge test --match-path test/GeneratedFixtureE2E.t.sol
 popd >/dev/null
 
