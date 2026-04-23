@@ -85,8 +85,6 @@ jobs:
           ~/.sp1/bin/cargo-prove prove build
 
       - name: Run generated fixture E2E
-        env:
-          INCLUDED_TX: ${{ vars.INCLUDED_TX || '' }}
         run: |
           if [ -z "${NETWORK_PRIVATE_KEY}" ]; then
             echo "NETWORK_PRIVATE_KEY environment secret is required for network proof E2E" >&2
@@ -100,11 +98,11 @@ jobs:
 
           FIXTURE_PATH="${PWD}/contracts/src/fixtures/${PROOF_SYSTEM}-e2e-${GITHUB_RUN_ID}.json"
 
-          if [ -n "${INCLUDED_TX}" ]; then
+          if [ -n "${{ vars.INCLUDED_TX }}" ]; then
             TX_INCLUSION_E2E_FIXTURE_PATH="${FIXTURE_PATH}" \
             ./scripts/run_generated_fixture_e2e.sh "${PROOF_SYSTEM}" \
               --eth-rpc-url "${ETH_RPC_URL}" \
-              --transaction-hash "${INCLUDED_TX}"
+              --transaction-hash "${{ vars.INCLUDED_TX }}"
           else
             TX_INCLUSION_E2E_FIXTURE_PATH="${FIXTURE_PATH}" \
             ./scripts/run_generated_fixture_e2e.sh "${PROOF_SYSTEM}" \

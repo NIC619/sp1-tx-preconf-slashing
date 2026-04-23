@@ -80,7 +80,12 @@ async fn main() -> Result<()> {
 
     let transaction_hash = args
         .transaction_hash
-        .or_else(|| std::env::var("INCLUDED_TX").ok())
+        .or_else(|| {
+            std::env::var("INCLUDED_TX")
+                .ok()
+                .map(|tx| tx.trim().to_string())
+                .filter(|tx| !tx.is_empty())
+        })
         .unwrap_or_else(|| INCLUDED_TX.to_string());
 
     // Get the transaction details
