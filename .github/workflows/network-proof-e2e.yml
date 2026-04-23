@@ -16,6 +16,9 @@ on:
       - published
       - prereleased
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   network-proof-e2e:
     name: Generate Network Proof And Verify Fixture
