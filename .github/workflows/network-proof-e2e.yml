@@ -36,7 +36,7 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.91.0
+          toolchain: 1.91.1
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -50,7 +50,7 @@ jobs:
             . -> target
           cache-directories: |
             ~/.cargo/bin/
-          shared-key: sp1-host-rust-1.91.0
+          shared-key: sp1-host-rust-1.91.1
 
       - name: Cache Foundry dependencies
         uses: actions/cache@v4
