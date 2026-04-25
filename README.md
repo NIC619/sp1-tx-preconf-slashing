@@ -1,6 +1,6 @@
 # Transaction Inclusion Precise Slasher
 
-This project implements a complete transaction inclusion slashing system using zero-knowledge proofs. It demonstrates how block proposers can be slashed for making false transaction inclusion commitments.
+This project is a demo transaction-inclusion slashing system using zero-knowledge proofs. It demonstrates how block proposers can be slashed for a specific false inclusion commitment case.
 
 ## Overview
 
@@ -8,9 +8,14 @@ The system enables:
 - **Proposer Commitments**: Block proposers make EIP-712 signed commitments to include transactions at specific indices
 - **Bond Management**: Proposers stake 0.1 ETH bonds with time-delayed withdrawals 
 - **Violation Detection**: Users detect when proposers include different transactions than committed
-- **ZK Proof Slashing**: Generate proofs using SP1 to slash violators on-chain
+- **ZK Proof Slashing**: Generate SP1 proofs for the supported "different transaction at the promised index" slash path
+- **Demo Canonical Anchor**: Require an owner-registered canonical block hash before a proof can slash
 - **Real-time Proving**: Integration with Succinct Prover Network for live proof generation
 - **Interactive Demo**: Complete React UI for testing the entire slashing workflow
+
+For the current design/security review and the issue-resolution plan, see [docs/SLASHER_DESIGN_REVIEW.md](./docs/SLASHER_DESIGN_REVIEW.md). For the broader demo-to-production delta, see [docs/PRODUCTION_GAPS.md](./docs/PRODUCTION_GAPS.md).
+
+Current limitation: the contract does not yet slash omission, empty-block, or index-out-of-range cases. The registered block-hash anchor is a demo hardening step, not a production historical canonicality design.
 
 ## Key Components
 
@@ -69,7 +74,7 @@ protoc --version
 
 ### Option A: Demo UI (Recommended)
 
-Experience the complete slashing workflow through the interactive demo:
+Experience the supported slashing workflow through the interactive demo:
 
 1. **Setup Environment**:
    ```sh
@@ -193,7 +198,7 @@ cargo run --release --bin vkey
 
 ### Interactive Slashing Workflow
 
-The React demo provides a complete end-to-end experience:
+The React demo provides an end-to-end experience for the currently supported slash path:
 
 1. **Proposer Tab**:
    - Bond management (stake 0.1 ETH, initiate/complete withdrawals)
@@ -203,8 +208,8 @@ The React demo provides a complete end-to-end experience:
 2. **User Tab**:
    - Verify proposer commitments and signatures
    - Check actual transaction inclusion against commitments
-   - Detect violations (different transaction at promised index)
-   - Generate ZK proofs for slashing violators
+   - Detect violations and distinguish slashable from not-yet-slashable cases
+   - Generate ZK proofs for the supported different-transaction slash path
    - Execute slashing transactions to burn violator bonds
 
 ### Real-time Proof Generation
@@ -217,7 +222,7 @@ The system supports two modes:
 
 2. **Live Mode**: Real-time proof generation via Succinct network:
    - Integrates with your Rust `evm` binary using `SP1_PROVER=network`
-   - Generates proofs for any transaction violation
+   - Generates proofs for supported different-transaction violations
    - Requires PROVE tokens and network configuration
 
 ### Backend Integration

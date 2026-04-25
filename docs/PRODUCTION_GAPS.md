@@ -1,0 +1,207 @@
+# Demo To Production Gaps
+
+This document tracks the main gaps between the current demo implementation and a production-grade transaction-inclusion slashing protocol.
+
+The current repository is useful as a proof-of-concept for SP1-backed inclusion evidence and a simple slash path. It should not be read as a complete production preconfirmation protocol.
+
+## Current Demo Boundary
+
+The demo currently supports one slashable violation:
+
+- a proposer signed a commitment for `transactionHash` at `transactionIndex` in `blockNumber`;
+- the challenger proves that a different transaction was included at that same index in that same block;
+- the proof's `blockHash` must match a registered canonical block hash;
+- the proposer has enough bond to burn the fixed slash amount.
+
+It does not currently slash:
+
+- omitted transactions,
+- empty blocks,
+- index-out-of-range promises,
+- broader "transaction appears anywhere in block" promises,
+- conflicting commitments,
+- replay across richer commitment domains,
+- or production collateral and withdrawal-reservation failures.
+
+## 1. Canonical Block Anchoring
+
+Demo state:
+
+- The slasher has `canonicalBlockHashes[blockNumber]`.
+- The owner registers a block hash with `registerCanonicalBlockHash(blockNumber, blockHash)`.
+- The proof output must match that registered hash.
+
+Why this is not production-ready:
+
+- The registration source is trusted.
+- The contract does not independently prove that the registered hash is canonical.
+- The mechanism can support tests and demos, but it is not a decentralized historical-block oracle.
+
+Production directions:
+
+- For recent same-chain blocks, use the EVM `blockhash` window and require submitted headers to match the trusted block hash.
+- For older-but-still-recent consensus data, use EIP-4788 beacon roots plus proofs from the beacon root to the execution payload/header, then to the transaction trie.
+- For older history, use a header oracle, checkpoint system, light-client proof, or another explicitly trusted canonicality source.
+
+Open design question:
+
+- Should commitments target the same chain where the slasher lives, or can the slasher adjudicate commitments about another chain through an oracle/bridge-style anchor?
+
+## 2. Proof Statement Completeness
+
+Demo state:
+
+- The SP1 program proves inclusion of one raw transaction at one precise index under a supplied transaction root.
+- It does not prove non-inclusion, absence at an index, transaction count bounds, or omission.
+
+Why this is not production-ready:
+
+- A proposer can break the intuitive promise by omitting the transaction, producing an empty block, or producing a block where the promised index does not exist.
+- Those are currently detectable by the UI but not slashable by the contract.
+
+Production directions:
+
+- Define the exact promise first.
+- Add proof modes for every slashable violation under that promise.
+- Make the public values encode a violation type, not just `isIncluded`.
+
+## 3. Commitment Semantics
+
+Demo state:
+
+- `InclusionCommitment` binds only `blockNumber`, `transactionHash`, `transactionIndex`, and `deadline`.
+
+Why this is not production-ready:
+
+- The protocol does not yet specify whether the promise is exact-position inclusion, anywhere-in-block inclusion, inclusion by a slot/time, or inclusion under a particular builder/proposer role.
+- It does not bind chain ID, transaction bytes, fee constraints, replacement policy, or a nonce/salt.
+
+Production directions:
+
+- Add an explicit commitment schema version.
+- Bind the target chain and domain.
+- Decide whether the promise is about a transaction hash, full transaction bytes, sender/nonce intent, or a richer transaction constraint.
+- Include a commitment nonce or unique ID if replay and cancellation semantics matter.
+
+## 4. Challenge Timing
+
+Demo state:
+
+- `deadline` currently gates whether slashing is allowed.
+
+Why this is not production-ready:
+
+- Fulfillment time and dispute time are different concepts.
+- A proposer could choose a deadline that gives challengers too little time to generate evidence and submit a slash transaction.
+
+Production directions:
+
+- Separate fulfillment deadline from challenge deadline.
+- Define a minimum challenge window after the target block becomes available/finalized.
+- Align the window with the canonical anchor mechanism. For example, `blockhash` anchoring requires recent disputes; EIP-4788 anchoring has a bounded root-history window.
+
+## 5. Commitment Lifecycle And Registration
+
+Demo state:
+
+- The contract sees the signed commitment only at slash time.
+- There is no on-chain record of active promises.
+
+Why this is not production-ready:
+
+- Observability is weak.
+- There is no lifecycle for cancellation, replacement, expiry, outstanding exposure, or reserved collateral.
+
+Production directions:
+
+- Consider lightweight commitment registration if lifecycle clarity matters.
+- Track outstanding slash exposure if withdrawal safety becomes in-scope.
+- Keep registration separate from canonical block registration; they solve different problems.
+
+## 6. Collateral And Withdrawal Safety
+
+Demo state:
+
+- Proposers deposit ETH.
+- Slashing burns a fixed amount.
+- Withdrawals have a delay but no reservation against outstanding promises.
+
+Why this is not production-ready:
+
+- A proposer could make many commitments against insufficient effective collateral.
+- Withdrawal safety is not tied to unresolved promises or challenge windows.
+
+Production directions:
+
+- Define maximum slash exposure per commitment.
+- Reserve collateral while promises are outstanding.
+- Release reserved collateral only after the relevant challenge window expires.
+
+Status for current pass:
+
+- Deferred. This is important for production, but not part of the current demo-hardening pass.
+
+## 7. Challenger Incentives
+
+Demo state:
+
+- The slash amount is burned.
+- There is no challenger reward design.
+
+Why this is not production-ready:
+
+- Challengers pay proof-generation and transaction costs.
+- Without rewards or another incentive, valid disputes may not be submitted.
+
+Production directions:
+
+- Decide burn/reward split.
+- Account for proof costs and griefing.
+- Consider bonds for challenge protocols if false challenges can impose costs.
+
+Status for current pass:
+
+- Deferred.
+
+## 8. Signature And Domain Hardening
+
+Demo state:
+
+- The contract uses a minimal `ecrecover` path.
+- The EIP-712 domain is simple.
+
+Why this is not production-ready:
+
+- Malleable or malformed signatures should be rejected with hardened utilities.
+- Contract wallets are not supported.
+- Commitment domain fields are likely incomplete for multi-chain or upgraded deployments.
+
+Production directions:
+
+- Use hardened ECDSA utilities.
+- Decide whether ERC-1271 contract signatures are required.
+- Include schema versioning and stronger replay domains.
+
+## 9. UI And Documentation Truthfulness
+
+Demo state:
+
+- The UI now distinguishes slashable `DIFFERENT_TRANSACTION` cases from detected-but-not-slashable cases.
+- The README and design review call the repository a demo.
+
+Why this is not production-ready:
+
+- Any new proof mode, commitment type, or anchor mode must be reflected in the UI.
+- The demo must not imply that all detected violations are enforceable.
+
+Production directions:
+
+- Treat UI copy as part of the protocol surface.
+- Show the exact slash condition being enforced.
+- Surface anchor assumptions, proof mode, and challenge-window status.
+
+## Relationship To `SLASHER_DESIGN_REVIEW.md`
+
+`SLASHER_DESIGN_REVIEW.md` tracks the current in-scope hardening work issue by issue.
+
+This document tracks the larger production delta, including topics intentionally deferred from the current pass.

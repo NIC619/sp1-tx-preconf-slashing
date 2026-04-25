@@ -253,7 +253,10 @@ const UserTab = ({ wallet }) => {
       } else {
         // Display specific violation message based on the type
         let violationDetails = result.violationMessage || 'Transaction was NOT included at the promised position!';
-        setError(`❌ Commitment Violation Detected: ${violationDetails} Proposer can be slashed.`);
+        const slashabilityMessage = result.violationType === 'DIFFERENT_TRANSACTION'
+          ? 'This is the only violation type this demo can currently slash.'
+          : 'This demo detects this violation type but cannot currently slash it.';
+        setError(`❌ Commitment Violation Detected: ${violationDetails} ${slashabilityMessage}`);
       }
 
     } catch (err) {
@@ -381,6 +384,8 @@ const UserTab = ({ wallet }) => {
           '0xd2b8c7c9': 'TransactionWasIncluded: Cannot slash - the promised transaction was actually included',
           '0x82b42900': 'ProofMustDemonstrateInclusion: Proof must show a transaction was included',
           '0x7c946ed7': 'BlockNumberMismatch: Block number in proof does not match commitment',
+          '0xe3479721': 'MissingCanonicalBlockHash: No canonical block hash has been registered for this block',
+          '0xe42b5e7e': 'BlockHashMismatch: Proof block hash does not match the registered canonical block hash',
           '0x8c379a00': 'TransactionIndexMismatch: Transaction index in proof does not match commitment'
         };
         
@@ -650,7 +655,9 @@ const UserTab = ({ wallet }) => {
                 <br/><br/>
                 <strong>Violation Type:</strong> {inclusionResult.violationType || 'UNKNOWN'}
                 <br/><br/>
-                This proposer can be slashed for breaking their commitment.
+                {inclusionResult.violationType === 'DIFFERENT_TRANSACTION'
+                  ? 'This is the only violation type this demo can currently slash.'
+                  : 'This demo detects this violation type but cannot currently slash it.'}
               </div>
             )}
           </div>

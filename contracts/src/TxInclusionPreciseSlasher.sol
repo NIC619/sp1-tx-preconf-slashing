@@ -15,6 +15,7 @@ contract TxInclusionPreciseSlasher {
     uint256 public constant MIN_BOND_AMOUNT = 0.1 ether;
     address public constant BURN_ADDRESS = address(0);
 
+    address public immutable OWNER;
     uint256 public immutable WITHDRAWAL_DELAY;
     address public immutable INCLUSION_VERIFIER;
 
@@ -27,15 +28,14 @@ contract TxInclusionPreciseSlasher {
     mapping(address => uint256) public pendingWithdrawals;
     mapping(address => uint256) public withdrawalTimestamps;
     mapping(bytes32 => bool) public slashedCommitments;
+    mapping(uint64 => bytes32) public canonicalBlockHashes;
 
     event BondAdded(address indexed proposer, uint256 amount, uint256 newTotal);
     event WithdrawalInitiated(address indexed proposer, uint256 amount, uint256 availableAt);
     event WithdrawalCompleted(address indexed proposer, uint256 amount);
+    event CanonicalBlockHashRegistered(uint64 indexed blockNumber, bytes32 indexed blockHash);
     event ProposerSlashed(
-        address indexed proposer, 
-        bytes32 indexed commitmentHash,
-        uint256 slashedAmount,
-        address indexed slasher
+        address indexed proposer, bytes32 indexed commitmentHash, uint256 slashedAmount, address indexed slasher
     );
 
     error InsufficientBondAmount();
@@ -47,10 +47,15 @@ contract TxInclusionPreciseSlasher {
     error CommitmentAlreadySlashed();
     error TransactionWasIncluded();
     error BlockNumberMismatch();
+    error MissingCanonicalBlockHash();
+    error BlockHashMismatch();
+    error InvalidCanonicalBlockHash();
+    error OnlyOwner();
     error ProofMustDemonstrateInclusion();
     error TransactionIndexMismatch();
 
     constructor(address _inclusionVerifier, uint256 _withdrawalDelay) {
+        OWNER = msg.sender;
         INCLUSION_VERIFIER = _inclusionVerifier;
         WITHDRAWAL_DELAY = _withdrawalDelay;
 
@@ -72,6 +77,18 @@ contract TxInclusionPreciseSlasher {
 
         proposerBonds[msg.sender] += msg.value;
         emit BondAdded(msg.sender, msg.value, proposerBonds[msg.sender]);
+    }
+
+    function registerCanonicalBlockHash(uint64 blockNumber, bytes32 blockHash) external {
+        if (msg.sender != OWNER) {
+            revert OnlyOwner();
+        }
+        if (blockHash == bytes32(0)) {
+            revert InvalidCanonicalBlockHash();
+        }
+
+        canonicalBlockHashes[blockNumber] = blockHash;
+        emit CanonicalBlockHashRegistered(blockNumber, blockHash);
     }
 
     function initiateWithdrawal(uint256 amount) external {
@@ -142,6 +159,14 @@ contract TxInclusionPreciseSlasher {
             revert BlockNumberMismatch();
         }
 
+        bytes32 canonicalBlockHash = canonicalBlockHashes[commitment.blockNumber];
+        if (canonicalBlockHash == bytes32(0)) {
+            revert MissingCanonicalBlockHash();
+        }
+        if (proofOutput.blockHash != canonicalBlockHash) {
+            revert BlockHashMismatch();
+        }
+
         // Proof must show that a transaction WAS included at the promised position
         if (!proofOutput.isIncluded) {
             revert ProofMustDemonstrateInclusion();
@@ -188,13 +213,11 @@ contract TxInclusionPreciseSlasher {
         );
     }
 
-    function _verifySignature(
-        InclusionCommitment calldata commitment,
-        address proposer,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) internal view returns (bool) {
+    function _verifySignature(InclusionCommitment calldata commitment, address proposer, uint8 v, bytes32 r, bytes32 s)
+        internal
+        view
+        returns (bool)
+    {
         bytes32 digest = _hashCommitment(commitment);
         address recoveredSigner = ecrecover(digest, v, r, s);
         return recoveredSigner == proposer;

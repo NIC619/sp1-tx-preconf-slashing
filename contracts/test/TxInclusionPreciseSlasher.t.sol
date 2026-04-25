@@ -60,6 +60,7 @@ contract TxInclusionPreciseSlasherTest is Test {
         assertEq(slasher.SLASH_AMOUNT(), SLASH_AMOUNT);
         assertEq(slasher.MIN_BOND_AMOUNT(), MIN_BOND_AMOUNT);
         assertEq(slasher.BURN_ADDRESS(), address(0));
+        assertEq(slasher.OWNER(), address(this));
         assertEq(slasher.WITHDRAWAL_DELAY(), WITHDRAWAL_DELAY);
         assertEq(slasher.INCLUSION_VERIFIER(), address(mockVerifier));
     }
@@ -78,6 +79,26 @@ contract TxInclusionPreciseSlasherTest is Test {
         vm.stopPrank();
 
         assertEq(slasher.getProposerBond(proposer), 0.8 ether);
+    }
+
+    function test_RegisterCanonicalBlockHash() public {
+        vm.expectEmit(address(slasher));
+        emit TxInclusionPreciseSlasher.CanonicalBlockHashRegistered(COMMITTED_BLOCK_NUMBER, PROOF_BLOCK_HASH);
+
+        slasher.registerCanonicalBlockHash(COMMITTED_BLOCK_NUMBER, PROOF_BLOCK_HASH);
+
+        assertEq(slasher.canonicalBlockHashes(COMMITTED_BLOCK_NUMBER), PROOF_BLOCK_HASH);
+    }
+
+    function testRevert_RegisterCanonicalBlockHash_NotOwner() public {
+        vm.prank(user);
+        vm.expectRevert(TxInclusionPreciseSlasher.OnlyOwner.selector);
+        slasher.registerCanonicalBlockHash(COMMITTED_BLOCK_NUMBER, PROOF_BLOCK_HASH);
+    }
+
+    function testRevert_RegisterCanonicalBlockHash_ZeroHash() public {
+        vm.expectRevert(TxInclusionPreciseSlasher.InvalidCanonicalBlockHash.selector);
+        slasher.registerCanonicalBlockHash(COMMITTED_BLOCK_NUMBER, bytes32(0));
     }
 
     function testRevert_AddBond_InsufficientAmount() public {
@@ -172,15 +193,16 @@ contract TxInclusionPreciseSlasherTest is Test {
 
     function test_Slash_Success() public {
         _bondProposer(1 ether);
+        _registerCanonicalBlockHash();
 
         InclusionCommitment memory commitment = _makeCommitment(
             COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
         (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        mockVerifier.setMockReturn(_makeProofOutput(
-            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
-        ));
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true)
+        );
 
         uint256 proposerBondBefore = slasher.getProposerBond(proposer);
 
@@ -230,15 +252,16 @@ contract TxInclusionPreciseSlasherTest is Test {
 
     function testRevert_Slash_AlreadySlashed() public {
         _bondProposer(1 ether);
+        _registerCanonicalBlockHash();
 
         InclusionCommitment memory commitment = _makeCommitment(
             COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
         (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        mockVerifier.setMockReturn(_makeProofOutput(
-            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
-        ));
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true)
+        );
 
         vm.startPrank(user);
         slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
@@ -249,22 +272,23 @@ contract TxInclusionPreciseSlasherTest is Test {
 
     function testRevert_Slash_TransactionWasIncluded() public {
         _bondProposer(1 ether);
+        _registerCanonicalBlockHash();
 
         InclusionCommitment memory commitment = _makeCommitment(
             COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
         (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        mockVerifier.setMockReturn(_makeProofOutput(
-            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
-        ));
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true)
+        );
 
         vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.TransactionWasIncluded.selector);
         slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
     }
 
-    function testRevert_Slash_ProofMustDemonstrateInclusion() public {
+    function testRevert_Slash_MissingCanonicalBlockHash() public {
         _bondProposer(1 ether);
 
         InclusionCommitment memory commitment = _makeCommitment(
@@ -272,9 +296,45 @@ contract TxInclusionPreciseSlasherTest is Test {
         );
         (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        mockVerifier.setMockReturn(_makeProofOutput(
-            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, false
-        ));
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true)
+        );
+
+        vm.prank(user);
+        vm.expectRevert(TxInclusionPreciseSlasher.MissingCanonicalBlockHash.selector);
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
+    }
+
+    function testRevert_Slash_BlockHashMismatch() public {
+        _bondProposer(1 ether);
+        slasher.registerCanonicalBlockHash(COMMITTED_BLOCK_NUMBER, bytes32(uint256(0xabc)));
+
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
+        );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
+
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true)
+        );
+
+        vm.prank(user);
+        vm.expectRevert(TxInclusionPreciseSlasher.BlockHashMismatch.selector);
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
+    }
+
+    function testRevert_Slash_ProofMustDemonstrateInclusion() public {
+        _bondProposer(1 ether);
+        _registerCanonicalBlockHash();
+
+        InclusionCommitment memory commitment = _makeCommitment(
+            COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
+        );
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
+
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, false)
+        );
 
         vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.ProofMustDemonstrateInclusion.selector);
@@ -283,15 +343,16 @@ contract TxInclusionPreciseSlasherTest is Test {
 
     function testRevert_Slash_TransactionIndexMismatch() public {
         _bondProposer(1 ether);
+        _registerCanonicalBlockHash();
 
         InclusionCommitment memory commitment = _makeCommitment(
             COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, block.timestamp + 1 hours
         );
         (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        mockVerifier.setMockReturn(_makeProofOutput(
-            COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX + 2, true
-        ));
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX + 2, true)
+        );
 
         vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.TransactionIndexMismatch.selector);
@@ -306,9 +367,9 @@ contract TxInclusionPreciseSlasherTest is Test {
         );
         (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
 
-        mockVerifier.setMockReturn(_makeProofOutput(
-            COMMITTED_BLOCK_NUMBER + 1, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true
-        ));
+        mockVerifier.setMockReturn(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER + 1, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, true)
+        );
 
         vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.BlockNumberMismatch.selector);
@@ -320,6 +381,10 @@ contract TxInclusionPreciseSlasherTest is Test {
         slasher.addBond{value: amount}();
     }
 
+    function _registerCanonicalBlockHash() internal {
+        slasher.registerCanonicalBlockHash(COMMITTED_BLOCK_NUMBER, PROOF_BLOCK_HASH);
+    }
+
     function _signCommitment(InclusionCommitment memory commitment)
         internal
         view
@@ -328,12 +393,11 @@ contract TxInclusionPreciseSlasherTest is Test {
         return vm.sign(proposerPrivateKey, slasher.hashCommitment(commitment));
     }
 
-    function _makeCommitment(
-        uint64 blockNumber,
-        bytes32 transactionHash,
-        uint64 transactionIndex,
-        uint256 deadline
-    ) internal pure returns (InclusionCommitment memory) {
+    function _makeCommitment(uint64 blockNumber, bytes32 transactionHash, uint64 transactionIndex, uint256 deadline)
+        internal
+        pure
+        returns (InclusionCommitment memory)
+    {
         return InclusionCommitment({
             blockNumber: blockNumber,
             transactionHash: transactionHash,
@@ -358,7 +422,9 @@ contract TxInclusionPreciseSlasherTest is Test {
     }
 
     function _encodeProofOutput(bool isIncluded) internal pure returns (bytes memory) {
-        return abi.encode(_makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, isIncluded));
+        return abi.encode(
+            _makeProofOutput(COMMITTED_BLOCK_NUMBER, INCLUDED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX, isIncluded)
+        );
     }
 
     function _dummyProof() internal pure returns (bytes memory) {
