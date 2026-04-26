@@ -28,8 +28,7 @@ const UserTab = ({ wallet }) => {
     proposerAddress: '',
     blockNumber: '',
     transactionHash: '',
-    transactionIndex: '',
-    hoursFromNow: '1'
+    transactionIndex: ''
   });
   const [currentCommitment, setCurrentCommitment] = useState(null);
   const [currentSignature, setCurrentSignature] = useState(null);
@@ -121,7 +120,7 @@ const UserTab = ({ wallet }) => {
   };
 
   const validateRequestForm = () => {
-    const { proposerAddress, blockNumber, transactionHash, transactionIndex, hoursFromNow } = requestForm;
+    const { proposerAddress, blockNumber, transactionHash, transactionIndex } = requestForm;
 
     if (!proposerAddress || !proposerAddress.startsWith('0x') || proposerAddress.length !== 42) {
       throw new Error('Invalid proposer address');
@@ -138,11 +137,6 @@ const UserTab = ({ wallet }) => {
     if (!validateTransactionIndex(transactionIndex)) {
       throw new Error('Invalid transaction index');
     }
-
-    const hours = parseFloat(hoursFromNow);
-    if (isNaN(hours) || hours <= 0 || hours > 24) {
-      throw new Error('Hours from now must be between 0 and 24');
-    }
   };
 
   const createPreconfirmationRequest = async () => {
@@ -157,13 +151,10 @@ const UserTab = ({ wallet }) => {
 
       validateRequestForm();
 
-      const deadline = Math.floor(Date.now() / 1000) + (parseFloat(requestForm.hoursFromNow) * 3600);
-
       const commitment = {
         blockNumber: BigInt(requestForm.blockNumber),
         transactionHash: requestForm.transactionHash,
-        transactionIndex: BigInt(requestForm.transactionIndex),
-        deadline: BigInt(deadline)
+        transactionIndex: BigInt(requestForm.transactionIndex)
       };
 
       // Note: In a real app, you would send this to the proposer to sign
@@ -332,8 +323,7 @@ const UserTab = ({ wallet }) => {
       const commitmentTuple = [
         verificationResult.commitment.blockNumber,
         verificationResult.commitment.transactionHash,
-        verificationResult.commitment.transactionIndex,
-        verificationResult.commitment.deadline
+        verificationResult.commitment.transactionIndex
       ];
 
       // Extract signature components
@@ -379,7 +369,7 @@ const UserTab = ({ wallet }) => {
         const errorMap = {
           '0xcf3e0074': 'CommitmentAlreadySlashed: This commitment has already been slashed',
           '0x4ca88867': 'InvalidSignature: The commitment signature is invalid', 
-          '0x857f8f6e': 'CommitmentExpired: The commitment has expired',
+          '0x85415ec1': 'SlashingWindowExpired: The slashing window has expired',
           '0x1e4ec46b': 'InsufficientProposerBond: Proposer does not have sufficient bond to slash',
           '0xd2b8c7c9': 'TransactionWasIncluded: Cannot slash - the promised transaction was actually included',
           '0xc574ecb8': 'InvalidIncludedTransactionProof: Included-transaction proof has an invalid zero transaction hash',
@@ -478,18 +468,6 @@ const UserTab = ({ wallet }) => {
           />
         </div>
 
-        <div className="form-group">
-          <label>Deadline (Hours from now):</label>
-          <input
-            type="number"
-            step="0.1"
-            className="form-control"
-            value={requestForm.hoursFromNow}
-            onChange={(e) => handleRequestFormChange('hoursFromNow', e.target.value)}
-            placeholder="1"
-          />
-        </div>
-
         <button
           className="btn btn-primary"
           onClick={createPreconfirmationRequest}
@@ -582,7 +560,7 @@ const UserTab = ({ wallet }) => {
                 <div>Block: {verificationResult.commitment.blockNumber.toString()}</div>
                 <div>Transaction: {verificationResult.commitment.transactionHash}</div>
                 <div>Index: {verificationResult.commitment.transactionIndex.toString()}</div>
-                <div>Deadline: {new Date(Number(verificationResult.commitment.deadline) * 1000).toLocaleString()}</div>
+                <div>Fulfillment Time: canonical block timestamp</div>
               </div>
             )}
           </div>

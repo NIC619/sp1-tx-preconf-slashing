@@ -122,8 +122,7 @@ export const SLASHER_ABI = [
         "components": [
           {"name": "blockNumber", "type": "uint64"},
           {"name": "transactionHash", "type": "bytes32"},
-          {"name": "transactionIndex", "type": "uint64"},
-          {"name": "deadline", "type": "uint256"}
+          {"name": "transactionIndex", "type": "uint64"}
         ],
         "name": "commitment",
         "type": "tuple"
@@ -162,6 +161,5 @@ export const EIP712_TYPES = {
     { name: 'blockNumber', type: 'uint64' },
     { name: 'transactionHash', type: 'bytes32' },
     { name: 'transactionIndex', type: 'uint64' },
-    { name: 'deadline', type: 'uint256' },
   ],
 };

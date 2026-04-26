@@ -78,7 +78,7 @@ export const CONTRACTS = {
 
 1. **Request Preconfirmation**: 
    - Fill in block number, transaction hash, and index
-   - Set commitment deadline
+   - Set the target block, transaction hash, and exact transaction index
    - Generate EIP-712 signature (in production, proposer would sign)
 
 2. **Verify Commitment**:
@@ -104,12 +104,14 @@ The demo signs an exact-position inclusion promise:
 but the contract only slashes exact-position violations: a different transaction at that index or no transaction at that
 index.
 
+The canonical block timestamp is registered by the demo owner alongside the canonical block hash. The slasher accepts
+valid slash proofs for a fixed 1-day slashing window after that timestamp.
+
 ```javascript
 {
   blockNumber: uint64,
   transactionHash: bytes32, 
-  transactionIndex: uint64,
-  deadline: uint256
+  transactionIndex: uint64
 }
 ```
 

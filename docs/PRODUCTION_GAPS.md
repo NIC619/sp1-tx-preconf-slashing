@@ -29,7 +29,7 @@ It does not currently slash:
 Demo state:
 
 - The slasher has `canonicalBlockHashes[blockNumber]`.
-- The owner registers a block hash with `registerCanonicalBlockHash(blockNumber, blockHash)`.
+- The owner registers a block hash and timestamp with `registerCanonicalBlock(blockNumber, blockHash, blockTimestamp)`.
 - The proof output must match that registered hash.
 
 Why this is not production-ready:
@@ -83,7 +83,7 @@ Missed proposal note:
 
 Demo state:
 
-- `InclusionCommitment` binds only `blockNumber`, `transactionHash`, `transactionIndex`, and `deadline`.
+- `InclusionCommitment` binds only `blockNumber`, `transactionHash`, and `transactionIndex`.
 - The demo semantics are exact-position inclusion: the signer promises
   `txHashAt(blockNumber, transactionIndex) == transactionHash`.
 - The EIP-712 domain binds the signature to the deployed slasher contract and chain ID, but the struct itself does not
@@ -102,21 +102,22 @@ Production directions:
 - Decide whether the promise is about a transaction hash, full transaction bytes, sender/nonce intent, or a richer transaction constraint.
 - Include a commitment nonce or unique ID if replay and cancellation semantics matter.
 
-## 4. Challenge Timing
+## 4. Slashing Window Timing
 
 Demo state:
 
-- `deadline` currently gates whether slashing is allowed.
+- The canonical block timestamp registered for `blockNumber` is treated as the fulfillment time.
+- Slashing remains available for a fixed 1-day `SLASHING_WINDOW` after that timestamp.
 
 Why this is not production-ready:
 
-- Fulfillment time and dispute time are different concepts.
-- A proposer could choose a deadline that gives challengers too little time to generate evidence and submit a slash transaction.
+- Fulfillment time and slashing time are now separated for the demo, but the slashing window is a fixed constant.
+- A production window should depend on the canonical anchor mechanism, finality assumptions, proof-generation latency,
+  and withdrawal/collateral reservation design.
 
 Production directions:
 
-- Separate fulfillment deadline from challenge deadline.
-- Define a minimum challenge window after the target block becomes available/finalized.
+- Define a minimum slashing window after the target block becomes available/finalized.
 - Align the window with the canonical anchor mechanism. For example, `blockhash` anchoring requires recent disputes; EIP-4788 anchoring has a bounded root-history window.
 
 ## 5. Commitment Lifecycle And Registration
@@ -148,13 +149,13 @@ Demo state:
 Why this is not production-ready:
 
 - A proposer could make many commitments against insufficient effective collateral.
-- Withdrawal safety is not tied to unresolved promises or challenge windows.
+- Withdrawal safety is not tied to unresolved promises or slashing windows.
 
 Production directions:
 
 - Define maximum slash exposure per commitment.
 - Reserve collateral while promises are outstanding.
-- Release reserved collateral only after the relevant challenge window expires.
+- Release reserved collateral only after the relevant slashing window expires.
 
 Status for current pass:
 
@@ -217,7 +218,7 @@ Production directions:
 
 - Treat UI copy as part of the protocol surface.
 - Show the exact slash condition being enforced.
-- Surface anchor assumptions, proof mode, and challenge-window status.
+- Surface anchor assumptions, proof mode, and slashing-window status.
 
 ## Relationship To `SLASHER_DESIGN_REVIEW.md`
 

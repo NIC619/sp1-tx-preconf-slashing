@@ -9,7 +9,8 @@ The system enables:
 - **Bond Management**: Proposers stake 0.1 ETH bonds with time-delayed withdrawals 
 - **Violation Detection**: Users detect exact-position commitment violations
 - **ZK Proof Slashing**: Generate SP1 proofs for supported exact-position slash paths
-- **Demo Canonical Anchor**: Require an owner-registered canonical block hash before a proof can slash
+- **Demo Canonical Anchor**: Require owner-registered canonical block metadata before a proof can slash
+- **Slashing Window**: Allow slash proofs for 1 day after the canonical block timestamp
 - **Real-time Proving**: Integration with Succinct Prover Network for live proof generation
 - **Interactive Demo**: Complete React UI for testing the entire slashing workflow
 
@@ -346,13 +347,16 @@ struct InclusionCommitment {
     uint64 blockNumber;
     bytes32 transactionHash;
     uint64 transactionIndex;
-    uint256 deadline;
 }
 ```
 
 The EIP-712 domain binds the signature to the deployed slasher contract and chain ID. The four-field struct does not
 claim anywhere-in-block inclusion, proposer-duty evidence, full transaction-byte constraints, cancellation semantics, or
 replacement semantics.
+
+The canonical block timestamp for `blockNumber` is registered by the owner alongside the canonical block hash. The demo
+slasher accepts valid slash proofs until `canonicalBlockTimestamp + SLASHING_WINDOW`, where `SLASHING_WINDOW` is
+currently 1 day.
 
 ## Configuration
 
@@ -380,7 +384,6 @@ SP1_PROVER=network cargo run --release --bin evm -- --eth-rpc-url https://your-r
    ```
    Block: 23354683, Index: 87
    Transaction: 0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff33166021
-   Deadline: 2025-01-15T12:00:00.000Z
    ```
 
 2. **User detects violation**:

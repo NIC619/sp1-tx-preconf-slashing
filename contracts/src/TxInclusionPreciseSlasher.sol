@@ -17,14 +17,12 @@ struct InclusionCommitment {
     bytes32 transactionHash;
     /// @notice Exact transaction index promised in the canonical block's transaction trie/list.
     uint64 transactionIndex;
-    /// @notice Last timestamp at which this demo contract accepts a slash call for the commitment.
-    /// @dev This is currently both the commitment expiry and the dispute cutoff. Issue #4 tracks separating those.
-    uint256 deadline;
 }
 
 contract TxInclusionPreciseSlasher {
     uint256 public constant SLASH_AMOUNT = 0.1 ether;
     uint256 public constant MIN_BOND_AMOUNT = 0.1 ether;
+    uint256 public constant SLASHING_WINDOW = 1 days;
     address public constant BURN_ADDRESS = address(0);
 
     address public immutable OWNER;
@@ -32,20 +30,20 @@ contract TxInclusionPreciseSlasher {
     address public immutable INCLUSION_VERIFIER;
 
     bytes32 public immutable DOMAIN_SEPARATOR;
-    bytes32 public constant COMMITMENT_TYPEHASH = keccak256(
-        "InclusionCommitment(uint64 blockNumber,bytes32 transactionHash,uint64 transactionIndex,uint256 deadline)"
-    );
+    bytes32 public constant COMMITMENT_TYPEHASH =
+        keccak256("InclusionCommitment(uint64 blockNumber,bytes32 transactionHash,uint64 transactionIndex)");
 
     mapping(address => uint256) public proposerBonds;
     mapping(address => uint256) public pendingWithdrawals;
     mapping(address => uint256) public withdrawalTimestamps;
     mapping(bytes32 => bool) public slashedCommitments;
     mapping(uint64 => bytes32) public canonicalBlockHashes;
+    mapping(uint64 => uint256) public canonicalBlockTimestamps;
 
     event BondAdded(address indexed proposer, uint256 amount, uint256 newTotal);
     event WithdrawalInitiated(address indexed proposer, uint256 amount, uint256 availableAt);
     event WithdrawalCompleted(address indexed proposer, uint256 amount);
-    event CanonicalBlockHashRegistered(uint64 indexed blockNumber, bytes32 indexed blockHash);
+    event CanonicalBlockRegistered(uint64 indexed blockNumber, bytes32 indexed blockHash, uint256 blockTimestamp);
     event ProposerSlashed(
         address indexed proposer, bytes32 indexed commitmentHash, uint256 slashedAmount, address indexed slasher
     );
@@ -55,13 +53,14 @@ contract TxInclusionPreciseSlasher {
     error NoWithdrawalInitiated();
     error WithdrawalDelayNotMet();
     error InvalidSignature();
-    error CommitmentExpired();
+    error SlashingWindowExpired();
     error CommitmentAlreadySlashed();
     error TransactionWasIncluded();
     error BlockNumberMismatch();
     error MissingCanonicalBlockHash();
     error BlockHashMismatch();
     error InvalidCanonicalBlockHash();
+    error InvalidCanonicalBlockTimestamp();
     error OnlyOwner();
     error InvalidIncludedTransactionProof();
     error InvalidNoTransactionProof();
@@ -92,21 +91,26 @@ contract TxInclusionPreciseSlasher {
         emit BondAdded(msg.sender, msg.value, proposerBonds[msg.sender]);
     }
 
-    /// @notice Registers the canonical execution block hash used to evaluate commitments for a block number.
+    /// @notice Registers the canonical execution block metadata used to evaluate commitments for a block number.
     /// @dev This is a demo-grade trusted anchor controlled by the contract owner. A production version should replace
     /// this owner registration with an on-chain canonicality mechanism appropriate for the target chain and time horizon.
     /// @param blockNumber The execution block number being anchored.
     /// @param blockHash The canonical execution block hash for `blockNumber`.
-    function registerCanonicalBlockHash(uint64 blockNumber, bytes32 blockHash) external {
+    /// @param blockTimestamp The timestamp from the canonical execution block header.
+    function registerCanonicalBlock(uint64 blockNumber, bytes32 blockHash, uint256 blockTimestamp) external {
         if (msg.sender != OWNER) {
             revert OnlyOwner();
         }
         if (blockHash == bytes32(0)) {
             revert InvalidCanonicalBlockHash();
         }
+        if (blockTimestamp == 0) {
+            revert InvalidCanonicalBlockTimestamp();
+        }
 
         canonicalBlockHashes[blockNumber] = blockHash;
-        emit CanonicalBlockHashRegistered(blockNumber, blockHash);
+        canonicalBlockTimestamps[blockNumber] = blockTimestamp;
+        emit CanonicalBlockRegistered(blockNumber, blockHash, blockTimestamp);
     }
 
     function initiateWithdrawal(uint256 amount) external {
@@ -169,6 +173,11 @@ contract TxInclusionPreciseSlasher {
     /// This function does not prove that the signer was the canonical proposer for the block, did or did not miss a
     /// slot, or omitted the transaction from every position in the block. Those are separate commitment/evidence
     /// models outside the current exact-position demo semantics.
+    ///
+    /// Fulfillment time is the timestamp of the canonical block registered for `commitment.blockNumber`. Slashing
+    /// remains available until `canonicalBlockTimestamp + SLASHING_WINDOW` so slashers have time to obtain canonical
+    /// block data, generate the proof, and submit the slash transaction. This is a fixed demo window, not a full
+    /// production slashing-period design.
     /// @param commitment The EIP-712 commitment signed by `proposer`.
     /// @param proposer The address whose bond is slashable and whose signature must recover from the commitment digest.
     /// @param v ECDSA signature recovery id.
@@ -185,10 +194,6 @@ contract TxInclusionPreciseSlasher {
         bytes calldata publicValues,
         bytes calldata proofBytes
     ) external {
-        if (block.timestamp > commitment.deadline) {
-            revert CommitmentExpired();
-        }
-
         bytes32 commitmentHash = _hashCommitment(commitment);
         if (slashedCommitments[commitmentHash]) {
             revert CommitmentAlreadySlashed();
@@ -202,6 +207,14 @@ contract TxInclusionPreciseSlasher {
             revert InsufficientProposerBond();
         }
 
+        bytes32 canonicalBlockHash = canonicalBlockHashes[commitment.blockNumber];
+        if (canonicalBlockHash == bytes32(0)) {
+            revert MissingCanonicalBlockHash();
+        }
+        if (block.timestamp > _slashingWindowEnd(canonicalBlockTimestamps[commitment.blockNumber])) {
+            revert SlashingWindowExpired();
+        }
+
         PublicValuesStruct memory proofOutput =
             ITransactionInclusionVerifier(INCLUSION_VERIFIER).verifyTransactionInclusionView(publicValues, proofBytes);
 
@@ -210,10 +223,6 @@ contract TxInclusionPreciseSlasher {
         }
 
         // Demo canonicality anchor: the proof's block hash must match the trusted hash registered for this block.
-        bytes32 canonicalBlockHash = canonicalBlockHashes[commitment.blockNumber];
-        if (canonicalBlockHash == bytes32(0)) {
-            revert MissingCanonicalBlockHash();
-        }
         if (proofOutput.blockHash != canonicalBlockHash) {
             revert BlockHashMismatch();
         }
@@ -261,12 +270,19 @@ contract TxInclusionPreciseSlasher {
                         COMMITMENT_TYPEHASH,
                         commitment.blockNumber,
                         commitment.transactionHash,
-                        commitment.transactionIndex,
-                        commitment.deadline
+                        commitment.transactionIndex
                     )
                 )
             )
         );
+    }
+
+    function _slashingWindowEnd(uint256 blockTimestamp) internal pure returns (uint256) {
+        if (blockTimestamp > type(uint256).max - SLASHING_WINDOW) {
+            return type(uint256).max;
+        }
+
+        return blockTimestamp + SLASHING_WINDOW;
     }
 
     function _verifySignature(InclusionCommitment calldata commitment, address proposer, uint8 v, bytes32 r, bytes32 s)

@@ -60,8 +60,7 @@ export const formatCommitmentForDisplay = (commitment) => {
   return {
     blockNumber: commitment.blockNumber.toString(),
     transactionHash: commitment.transactionHash,
-    transactionIndex: commitment.transactionIndex.toString(),
-    deadline: new Date(parseInt(commitment.deadline) * 1000).toISOString()
+    transactionIndex: commitment.transactionIndex.toString()
   };
 };
 
@@ -73,8 +72,7 @@ export const parseCommitmentFromJSON = (jsonString) => {
     return {
       blockNumber: BigInt(parsed.blockNumber),
       transactionHash: parsed.transactionHash,
-      transactionIndex: BigInt(parsed.transactionIndex),
-      deadline: BigInt(Math.floor(new Date(parsed.deadline).getTime() / 1000))
+      transactionIndex: BigInt(parsed.transactionIndex)
     };
   } catch (error) {
     throw new Error('Invalid commitment JSON format');
