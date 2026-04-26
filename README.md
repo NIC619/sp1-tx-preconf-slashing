@@ -7,15 +7,15 @@ This project is a demo transaction-inclusion slashing system using zero-knowledg
 The system enables:
 - **Proposer Commitments**: Block proposers make EIP-712 signed commitments to include transactions at specific indices
 - **Bond Management**: Proposers stake 0.1 ETH bonds with time-delayed withdrawals 
-- **Violation Detection**: Users detect when proposers include different transactions than committed
-- **ZK Proof Slashing**: Generate SP1 proofs for the supported "different transaction at the promised index" slash path
+- **Violation Detection**: Users detect exact-position commitment violations
+- **ZK Proof Slashing**: Generate SP1 proofs for supported exact-position slash paths
 - **Demo Canonical Anchor**: Require an owner-registered canonical block hash before a proof can slash
 - **Real-time Proving**: Integration with Succinct Prover Network for live proof generation
 - **Interactive Demo**: Complete React UI for testing the entire slashing workflow
 
 For the current design/security review and the issue-resolution plan, see [docs/SLASHER_DESIGN_REVIEW.md](./docs/SLASHER_DESIGN_REVIEW.md). For the broader demo-to-production delta, see [docs/PRODUCTION_GAPS.md](./docs/PRODUCTION_GAPS.md).
 
-Current limitation: the contract does not yet slash omission, empty-block, or index-out-of-range cases. The registered block-hash anchor is a demo hardening step, not a production historical canonicality design.
+Current limitation: the contract only slashes exact-position violations. It does not prove whole-block omission, proposer missed-duty, or proposer/builder identity failures. The registered block-hash anchor is a demo hardening step, not a production historical canonicality design.
 
 ## Key Components
 
@@ -159,7 +159,8 @@ For direct interaction with the ZK proof system:
 | `cargo run --release -- --execute` | Execute program locally | Local |
 | `cargo run --release -- --prove` | Generate core proof | Local |
 | `SP1_PROVER=network cargo run --release --bin evm -- --system groth16` | Prover network EVM proofs (recommended) | Network key + PROVE tokens |
-| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...` | Generate proof for specific transaction | Network key + PROVE tokens |
+| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...` | Generate proof for a specific included transaction | Network key + PROVE tokens |
+| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-block-number N --absence-transaction-index I` | Generate proof that no transaction exists at index `I` in block `N` | Network key + PROVE tokens |
 | `cargo run --release --bin evm -- --system groth16` | Local EVM proofs | Local prover resources |
 | `./scripts/run_generated_fixture_e2e.sh groth16` | Generate a fresh fixture and verify it through Foundry | RPC access + prover resources |
 | `cargo run --release --bin vkey` | Get verification key | Local |
@@ -209,7 +210,7 @@ The React demo provides an end-to-end experience for the currently supported sla
    - Verify proposer commitments and signatures
    - Check actual transaction inclusion against commitments
    - Detect violations and distinguish slashable from not-yet-slashable cases
-   - Generate ZK proofs for the supported different-transaction slash path
+   - Generate ZK proofs for supported exact-position slash paths
    - Execute slashing transactions to burn violator bonds
 
 ### Real-time Proof Generation
@@ -222,7 +223,7 @@ The system supports two modes:
 
 2. **Live Mode**: Real-time proof generation via Succinct network:
    - Integrates with your Rust `evm` binary using `SP1_PROVER=network`
-   - Generates proofs for supported different-transaction violations
+   - Generates proofs for supported exact-position violations
    - Requires PROVE tokens and network configuration
 
 ### Backend Integration

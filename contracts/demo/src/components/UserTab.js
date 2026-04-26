@@ -253,8 +253,8 @@ const UserTab = ({ wallet }) => {
       } else {
         // Display specific violation message based on the type
         let violationDetails = result.violationMessage || 'Transaction was NOT included at the promised position!';
-        const slashabilityMessage = result.violationType === 'DIFFERENT_TRANSACTION'
-          ? 'This is the only violation type this demo can currently slash.'
+        const slashabilityMessage = isSlashableViolationType(result.violationType)
+          ? 'This exact-position violation is slashable in this demo.'
           : 'This demo detects this violation type but cannot currently slash it.';
         setError(`❌ Commitment Violation Detected: ${violationDetails} ${slashabilityMessage}`);
       }
@@ -282,8 +282,8 @@ const UserTab = ({ wallet }) => {
       return;
     }
 
-    if (inclusionResult.violationType !== 'DIFFERENT_TRANSACTION') {
-      setError('Slashing is only supported for DIFFERENT_TRANSACTION violations in this demo');
+    if (!isSlashableViolationType(inclusionResult.violationType)) {
+      setError(`Slashing is not supported for ${inclusionResult.violationType} violations in this demo`);
       return;
     }
 
@@ -382,7 +382,8 @@ const UserTab = ({ wallet }) => {
           '0x857f8f6e': 'CommitmentExpired: The commitment has expired',
           '0x1e4ec46b': 'InsufficientProposerBond: Proposer does not have sufficient bond to slash',
           '0xd2b8c7c9': 'TransactionWasIncluded: Cannot slash - the promised transaction was actually included',
-          '0x82b42900': 'ProofMustDemonstrateInclusion: Proof must show a transaction was included',
+          '0xc574ecb8': 'InvalidIncludedTransactionProof: Included-transaction proof has an invalid zero transaction hash',
+          '0x187b05e7': 'InvalidNoTransactionProof: No-transaction proof must use a zero transaction hash',
           '0x7c946ed7': 'BlockNumberMismatch: Block number in proof does not match commitment',
           '0xe3479721': 'MissingCanonicalBlockHash: No canonical block hash has been registered for this block',
           '0xe42b5e7e': 'BlockHashMismatch: Proof block hash does not match the registered canonical block hash',
@@ -407,7 +408,11 @@ const UserTab = ({ wallet }) => {
     return verificationResult?.isValid && 
            inclusionResult && 
            !inclusionResult.isIncluded && 
-           inclusionResult.violationType === 'DIFFERENT_TRANSACTION';
+           isSlashableViolationType(inclusionResult.violationType);
+  };
+
+  const isSlashableViolationType = (violationType) => {
+    return ['DIFFERENT_TRANSACTION', 'NO_TRANSACTION', 'EMPTY_BLOCK', 'INDEX_OUT_OF_RANGE'].includes(violationType);
   };
 
   const getSlasherContract = () => {
@@ -655,8 +660,8 @@ const UserTab = ({ wallet }) => {
                 <br/><br/>
                 <strong>Violation Type:</strong> {inclusionResult.violationType || 'UNKNOWN'}
                 <br/><br/>
-                {inclusionResult.violationType === 'DIFFERENT_TRANSACTION'
-                  ? 'This is the only violation type this demo can currently slash.'
+                {isSlashableViolationType(inclusionResult.violationType)
+                  ? 'This exact-position violation is slashable in this demo.'
                   : 'This demo detects this violation type but cannot currently slash it.'}
               </div>
             )}
@@ -674,17 +679,19 @@ const UserTab = ({ wallet }) => {
               <strong>✅ Slashing Completed Successfully!</strong><br/>
               The proposer has been slashed for breaking their commitment.
             </div>
-          ) : inclusionResult?.violationType === 'DIFFERENT_TRANSACTION' ? (
+          ) : isSlashableViolationType(inclusionResult?.violationType) ? (
             <div>
               <div className="success" style={{ marginBottom: '15px' }}>
                 <strong>✅ Slashable Violation Detected!</strong><br/>
-                A different transaction was included at the promised position. This proposer can be slashed.
+                {inclusionResult?.violationType === 'DIFFERENT_TRANSACTION'
+                  ? 'A different transaction was included at the promised position.'
+                  : 'No transaction exists at the promised position.'} This proposer can be slashed.
               </div>
 
               {!slashingProof ? (
                 <div>
                   <div className="warning">
-                    <strong>Step 1:</strong> Generate a ZK proof showing that a different transaction was included at the promised position.
+                    <strong>Step 1:</strong> Generate a ZK proof for the detected exact-position violation.
                   </div>
                   
                   <button
@@ -711,7 +718,7 @@ const UserTab = ({ wallet }) => {
               ) : (
                 <div>
                   <div className="status-card status-success">
-                    <h4>Transaction Inclusion Proof (of different transaction) Generated ✅</h4>
+                    <h4>Exact-position Violation Proof Generated ✅</h4>
                     <div className="info-grid">
                       <div className="info-item">
                         <strong>Proof Type:</strong> {slashingProof.proofType}
@@ -737,9 +744,7 @@ const UserTab = ({ wallet }) => {
                     {slashingProof.isRealProof && (
                       <div className="contract-info" style={{ marginTop: '15px' }}>
                         <strong>🎉 Using Real Succinct Proof!</strong><br/>
-                        This proof was generated by the Succinct prover network and demonstrates that transaction 
-                        <code>{formatProofInfo(slashingProof).transactionHash}</code> was included at position 
-                        {formatProofInfo(slashingProof).transactionIndex} in block {formatProofInfo(slashingProof).blockNumber}.
+                        This proof was generated by the Succinct prover network for position {formatProofInfo(slashingProof).transactionIndex} in block {formatProofInfo(slashingProof).blockNumber}.
                       </div>
                     )}
                   </div>
@@ -787,12 +792,12 @@ const UserTab = ({ wallet }) => {
             </div>
           ) : (
             <div className="warning">
-              <strong>Slashing Not Available:</strong> This demo only supports slashing for DIFFERENT_TRANSACTION violations. 
+              <strong>Slashing Not Available:</strong> This demo only supports exact-position violation proofs. 
               Current violation type: {inclusionResult.violationType}
               
               <div style={{ marginTop: '10px', fontSize: '14px' }}>
-                <strong>Supported:</strong> When a different transaction is included at the promised position<br/>
-                <strong>Not supported:</strong> When no transaction exists at the promised position, block not found, etc.
+                <strong>Supported:</strong> Different transaction at the promised position, or no transaction at the promised position<br/>
+                <strong>Not supported:</strong> Block not found, proposer missed-duty evidence, broader whole-block omission claims
               </div>
             </div>
           )}

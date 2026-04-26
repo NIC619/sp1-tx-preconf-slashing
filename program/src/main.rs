@@ -17,6 +17,8 @@ pub struct TransactionInclusionInput {
     /// The precise index where the transaction should be located in the block
     pub transaction_index: u64,
     pub merkle_proof: Vec<Bytes>,
+    /// When true, prove that no transaction exists at the precise index.
+    pub prove_absence: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,13 +48,13 @@ alloy_sol_types::sol! {
 }
 
 /// Verify Merkle Patricia Trie inclusion proof for transaction at precise index using alloy-trie
-fn verify_merkle_proof(key: &[u8], transaction_data: &[u8], proof: &[Bytes], root: B256) -> bool {
+fn verify_merkle_proof(
+    key: &[u8],
+    transaction_data: Option<Vec<u8>>,
+    proof: &[Bytes],
+    root: B256,
+) -> bool {
     use alloy_trie::{proof::verify_proof, Nibbles};
-
-    if proof.is_empty() {
-        println!("✗ Proof is empty");
-        return false;
-    }
 
     println!(
         "Verifying MPT proof using alloy-trie with {} proof nodes",
@@ -62,7 +64,11 @@ fn verify_merkle_proof(key: &[u8], transaction_data: &[u8], proof: &[Bytes], roo
     // Convert key to nibbles (proper MPT format)
     let key_nibbles = Nibbles::unpack(key);
     println!("Target key nibbles: {:?}", key_nibbles);
-    println!("Target transaction size: {} bytes", transaction_data.len());
+    if let Some(transaction_data) = &transaction_data {
+        println!("Target transaction size: {} bytes", transaction_data.len());
+    } else {
+        println!("Proving no transaction at target index");
+    }
     println!("Expected root: {:?}", root);
 
     // Use alloy-trie's built-in proof verification
@@ -70,8 +76,8 @@ fn verify_merkle_proof(key: &[u8], transaction_data: &[u8], proof: &[Bytes], roo
     match verify_proof(
         root,
         key_nibbles.clone(),
-        Some(transaction_data.to_vec()), // Expected value at the key
-        proof,                           // Pass the proof slice directly
+        transaction_data, // Some(value) for inclusion, None for absence
+        proof,            // Pass the proof slice directly
     ) {
         Ok(()) => {
             println!("✓ MPT proof verification successful using alloy-trie!");
@@ -91,19 +97,32 @@ pub fn main() {
     // Validate block header consistency
     let computed_block_hash = input.block_header.hash_slow();
 
-    // Get the transaction hash
-    let target_tx_hash = keccak256(&input.raw_transaction);
+    // Absence proofs use a zero transaction hash sentinel.
+    let target_tx_hash = if input.prove_absence {
+        B256::ZERO
+    } else {
+        keccak256(&input.raw_transaction)
+    };
 
     // RLP encode the transaction index as the key
     let key = rlp_encode(input.transaction_index);
 
     // Verify the transaction is included using the Merkle proof
-    let is_included = verify_merkle_proof(
-        &key,
-        &input.raw_transaction,
-        &input.merkle_proof,
-        input.block_header.transactions_root,
-    );
+    let is_included = if input.prove_absence {
+        !verify_merkle_proof(
+            &key,
+            None,
+            &input.merkle_proof,
+            input.block_header.transactions_root,
+        )
+    } else {
+        verify_merkle_proof(
+            &key,
+            Some(input.raw_transaction.to_vec()),
+            &input.merkle_proof,
+            input.block_header.transactions_root,
+        )
+    };
 
     let proof = TransactionInclusionProof {
         block_hash: computed_block_hash,

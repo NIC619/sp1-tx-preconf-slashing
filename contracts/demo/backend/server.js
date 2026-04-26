@@ -21,23 +21,29 @@ const RUST_BINARY_PATH = path.join(__dirname, '../../../target/release/evm');
  */
 app.post('/api/generate-proof', async (req, res) => {
   try {
-    const { blockNumber, transactionHash, transactionIndex, proofSystem = 'groth16' } = req.body;
+    const { blockNumber, transactionHash, transactionIndex, violationType, proofSystem = 'groth16' } = req.body;
+    const isAbsenceProof = violationType && violationType !== 'DIFFERENT_TRANSACTION';
 
     // Validate input
-    if (!blockNumber || !transactionHash || transactionIndex === undefined) {
+    if (!blockNumber || transactionIndex === undefined || (!isAbsenceProof && !transactionHash)) {
       return res.status(400).json({
-        error: 'Missing required parameters: blockNumber, transactionHash, transactionIndex'
+        error: 'Missing required parameters: blockNumber, transactionIndex, and transactionHash for inclusion proofs'
       });
     }
 
-    console.log('Generating proof for:', { blockNumber, transactionHash, transactionIndex, proofSystem });
+    console.log('Generating proof for:', { blockNumber, transactionHash, transactionIndex, violationType, proofSystem });
 
     // Build command arguments
     const args = [
       '--system', proofSystem,
-      '--eth-rpc-url', 'https://ethereum-rpc.publicnode.com',
-      '--transaction-hash', transactionHash
+      '--eth-rpc-url', 'https://ethereum-rpc.publicnode.com'
     ];
+    if (isAbsenceProof) {
+      args.push('--absence-block-number', String(blockNumber));
+      args.push('--absence-transaction-index', String(transactionIndex));
+    } else {
+      args.push('--transaction-hash', transactionHash);
+    }
 
     // Create modified environment
     const env = {

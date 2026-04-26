@@ -51,7 +51,8 @@ contract TxInclusionPreciseSlasher {
     error BlockHashMismatch();
     error InvalidCanonicalBlockHash();
     error OnlyOwner();
-    error ProofMustDemonstrateInclusion();
+    error InvalidIncludedTransactionProof();
+    error InvalidNoTransactionProof();
     error TransactionIndexMismatch();
 
     constructor(address _inclusionVerifier, uint256 _withdrawalDelay) {
@@ -79,6 +80,11 @@ contract TxInclusionPreciseSlasher {
         emit BondAdded(msg.sender, msg.value, proposerBonds[msg.sender]);
     }
 
+    /// @notice Registers the canonical execution block hash used to evaluate commitments for a block number.
+    /// @dev This is a demo-grade trusted anchor controlled by the contract owner. A production version should replace
+    /// this owner registration with an on-chain canonicality mechanism appropriate for the target chain and time horizon.
+    /// @param blockNumber The execution block number being anchored.
+    /// @param blockHash The canonical execution block hash for `blockNumber`.
     function registerCanonicalBlockHash(uint64 blockNumber, bytes32 blockHash) external {
         if (msg.sender != OWNER) {
             revert OnlyOwner();
@@ -126,6 +132,38 @@ contract TxInclusionPreciseSlasher {
         emit WithdrawalCompleted(msg.sender, amount);
     }
 
+    /// @notice Slashes a proposer for violating an exact-position transaction inclusion commitment.
+    /// @dev The signed commitment means:
+    /// `txHashAt(commitment.blockNumber, commitment.transactionIndex) == commitment.transactionHash`.
+    ///
+    /// A successful proof must be anchored to the owner-registered canonical block hash for the committed block number.
+    /// Once anchored, two proof shapes are accepted:
+    ///
+    /// 1. Different transaction at index:
+    ///    - `proofOutput.isIncluded == true`
+    ///    - `proofOutput.transactionHash != bytes32(0)`
+    ///    - `proofOutput.transactionHash != commitment.transactionHash`
+    ///    - `proofOutput.transactionIndex == commitment.transactionIndex`
+    ///
+    /// 2. No transaction at index:
+    ///    - `proofOutput.isIncluded == false`
+    ///    - `proofOutput.transactionHash == bytes32(0)`
+    ///    - `proofOutput.transactionIndex == commitment.transactionIndex`
+    ///
+    /// For the second case, `transactionIndex` is not the index of an included transaction. It is the transaction-trie
+    /// key that the SP1 proof proves absent. This single absence case covers an empty block, an index outside the
+    /// block's transaction range, or any other canonical transaction trie with no value at the promised index.
+    ///
+    /// This function does not prove that the signer was the canonical proposer for the block, did or did not miss a
+    /// slot, or omitted the transaction from every position in the block. Those are separate commitment/evidence
+    /// models outside the current exact-position demo semantics.
+    /// @param commitment The EIP-712 commitment signed by `proposer`.
+    /// @param proposer The address whose bond is slashable and whose signature must recover from the commitment digest.
+    /// @param v ECDSA signature recovery id.
+    /// @param r ECDSA signature r value.
+    /// @param s ECDSA signature s value.
+    /// @param publicValues ABI-encoded public values committed by the SP1 proof.
+    /// @param proofBytes The SP1 proof bytes verified by `INCLUSION_VERIFIER`.
     function slash(
         InclusionCommitment calldata commitment,
         address proposer,
@@ -159,6 +197,7 @@ contract TxInclusionPreciseSlasher {
             revert BlockNumberMismatch();
         }
 
+        // Demo canonicality anchor: the proof's block hash must match the trusted hash registered for this block.
         bytes32 canonicalBlockHash = canonicalBlockHashes[commitment.blockNumber];
         if (canonicalBlockHash == bytes32(0)) {
             revert MissingCanonicalBlockHash();
@@ -167,17 +206,22 @@ contract TxInclusionPreciseSlasher {
             revert BlockHashMismatch();
         }
 
-        // Proof must show that a transaction WAS included at the promised position
-        if (!proofOutput.isIncluded) {
-            revert ProofMustDemonstrateInclusion();
+        if (proofOutput.isIncluded) {
+            if (proofOutput.transactionHash == bytes32(0)) {
+                revert InvalidIncludedTransactionProof();
+            }
+            // Inclusion proofs are slashable only when the proved transaction at the promised index is different.
+            if (proofOutput.transactionHash == commitment.transactionHash) {
+                revert TransactionWasIncluded();
+            }
+        } else {
+            // Absence proofs use the zero hash sentinel to distinguish "no transaction at this index" from inclusion.
+            if (proofOutput.transactionHash != bytes32(0)) {
+                revert InvalidNoTransactionProof();
+            }
         }
 
-        // Check that the included transaction is different from the promised one
-        if (proofOutput.transactionHash == commitment.transactionHash) {
-            revert TransactionWasIncluded();
-        }
-
-        // Verify the transaction was included at the exact promised position
+        // In inclusion mode this is the included transaction's index. In absence mode this is the empty trie key.
         if (proofOutput.transactionIndex != commitment.transactionIndex) {
             revert TransactionIndexMismatch();
         }

@@ -19,6 +19,8 @@ pub struct TransactionInclusionInput {
     /// The precise index where the transaction should be located in the block
     pub transaction_index: u64,
     pub merkle_proof: Vec<Bytes>,
+    /// When true, prove that no transaction exists at the precise index.
+    pub prove_absence: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,6 +194,95 @@ pub async fn generate_merkle_proof(
     println!("Trie root: {:?}", computed_root);
 
     Ok((proof_bytes, target_tx_encoded.clone()))
+}
+
+/// Generate a Merkle Patricia Trie exclusion proof for a transaction index in a block.
+pub async fn generate_merkle_absence_proof(
+    provider: &impl Provider,
+    block_number: u64,
+    tx_index: u64,
+) -> Result<Vec<Bytes>> {
+    use alloy_primitives::U256;
+    use alloy_rlp::encode as rlp_encode;
+    use alloy_trie::{proof::ProofRetainer, HashBuilder, Nibbles};
+
+    println!(
+        "Generating Merkle absence proof for transaction index {} in block {} using alloy-trie",
+        tx_index, block_number
+    );
+
+    let block = provider
+        .get_block(BlockId::Number(block_number.into()))
+        .full()
+        .await?
+        .ok_or_else(|| eyre::eyre!("Block not found: {}", block_number))?;
+
+    let complete_transactions = match &block.transactions {
+        BlockTransactions::Full(txs) => txs.clone(),
+        BlockTransactions::Hashes(_) => {
+            return Err(eyre::eyre!(
+                "Expected full transactions but got hashes - ensure .full() is used"
+            ));
+        }
+        _ => {
+            return Err(eyre::eyre!("Unexpected transaction format"));
+        }
+    };
+
+    if (tx_index as usize) < complete_transactions.len() {
+        return Err(eyre::eyre!(
+            "Transaction index {} exists in block {}; cannot generate absence proof",
+            tx_index,
+            block_number
+        ));
+    }
+
+    let target_key = rlp_encode(U256::from(tx_index));
+    let target_nibbles = Nibbles::unpack(&target_key);
+    let proof_retainer = ProofRetainer::from_iter([target_nibbles.clone()]);
+    let mut trie_builder = HashBuilder::default().with_proof_retainer(proof_retainer);
+
+    let mut key_value_pairs = Vec::new();
+    for (i, tx) in complete_transactions.iter().enumerate() {
+        let key = rlp_encode(U256::from(i));
+        let nibbles = Nibbles::unpack(&key);
+        let encoded_tx = encode_transaction_for_trie(tx)?;
+        key_value_pairs.push((nibbles, encoded_tx));
+    }
+    key_value_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (nibbles, encoded_tx) in key_value_pairs.iter() {
+        trie_builder.add_leaf(nibbles.clone(), encoded_tx);
+    }
+
+    let computed_root = trie_builder.root();
+    let block_root = block.header.transactions_root;
+    if computed_root != block_root {
+        return Err(eyre::eyre!(
+            "Computed trie root {:?} does not match block transactions root {:?}",
+            computed_root,
+            block_root
+        ));
+    }
+
+    let proof_bytes: Vec<Bytes> = trie_builder
+        .take_proof_nodes()
+        .into_nodes_sorted()
+        .into_iter()
+        .map(|(_, bytes)| bytes)
+        .collect();
+
+    use alloy_trie::proof::verify_proof;
+    verify_proof(computed_root, target_nibbles, None, &proof_bytes)
+        .map_err(|e| eyre::eyre!("Generated absence proof failed validation: {:?}", e))?;
+
+    println!(
+        "Generated absence proof with {} nodes for missing transaction index {}",
+        proof_bytes.len(),
+        tx_index
+    );
+
+    Ok(proof_bytes)
 }
 
 /// Encode transaction for trie using the exact Ethereum format

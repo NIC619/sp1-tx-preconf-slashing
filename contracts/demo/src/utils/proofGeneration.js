@@ -49,9 +49,10 @@ export const generateSlashingProof = async (inclusionResult, commitment) => {
     const actualTxHash = inclusionResult.actualTransactionHash;
     const blockNumber = inclusionResult.blockNumber;
     const transactionIndex = inclusionResult.transactionIndex;
+    const isAbsenceViolation = inclusionResult.violationType !== 'DIFFERENT_TRANSACTION';
 
     // Check if we can use the real proof fixture
-    const canUseRealProof = (
+    const canUseRealProof = !isAbsenceViolation && (
       blockNumber === PROOF_FIXTURE.blockNumber &&
       transactionIndex === PROOF_FIXTURE.transactionIndex &&
       actualTxHash.toLowerCase() === PROOF_FIXTURE.transactionHash.toLowerCase()
@@ -124,6 +125,7 @@ export const generateRealTimeProof = async (inclusionResult) => {
         blockNumber: inclusionResult.blockNumber,
         transactionHash: inclusionResult.actualTransactionHash,
         transactionIndex: inclusionResult.transactionIndex,
+        violationType: inclusionResult.violationType,
         proofSystem: 'groth16'
       }),
     });
@@ -221,18 +223,27 @@ export const validateSlashingProof = (proof, commitment, inclusionResult) => {
   }
 
   // Check isIncluded is true
-  if (!proof.publicValuesStruct.isIncluded) {
-    errors.push('Proof must show transaction was included');
-  }
+  if (inclusionResult.violationType === 'DIFFERENT_TRANSACTION') {
+    if (!proof.publicValuesStruct.isIncluded) {
+      errors.push('Different-transaction proof must show a transaction was included');
+    }
 
-  // Check transaction hash is different from commitment
-  if (proof.publicValuesStruct.transactionHash.toLowerCase() === commitment.transactionHash.toLowerCase()) {
-    errors.push('Proof transaction hash cannot be the same as committed transaction');
-  }
+    // Check transaction hash is different from commitment
+    if (proof.publicValuesStruct.transactionHash.toLowerCase() === commitment.transactionHash.toLowerCase()) {
+      errors.push('Proof transaction hash cannot be the same as committed transaction');
+    }
 
-  // Check transaction hash matches what was actually found
-  if (proof.publicValuesStruct.transactionHash.toLowerCase() !== inclusionResult.actualTransactionHash.toLowerCase()) {
-    errors.push('Proof transaction hash does not match actual transaction found');
+    // Check transaction hash matches what was actually found
+    if (proof.publicValuesStruct.transactionHash.toLowerCase() !== inclusionResult.actualTransactionHash.toLowerCase()) {
+      errors.push('Proof transaction hash does not match actual transaction found');
+    }
+  } else {
+    if (proof.publicValuesStruct.isIncluded) {
+      errors.push('No-transaction proof must show no transaction at the promised index');
+    }
+    if (proof.publicValuesStruct.transactionHash !== ethers.ZeroHash) {
+      errors.push('No-transaction proof must use zero transaction hash sentinel');
+    }
   }
 
   return {

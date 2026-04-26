@@ -77,6 +77,7 @@ async fn main() -> Result<()> {
         raw_transaction: encoded_tx_bytes,
         transaction_index: tx_index,
         merkle_proof,
+        prove_absence: false,
     };
 
     // Serialize input

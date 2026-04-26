@@ -14,6 +14,7 @@
 //! `NETWORK_PRIVATE_KEY`, then run the same command.
 
 use alloy::network::Ethereum;
+use alloy::primitives::Bytes;
 use alloy::providers::{Provider, RootProvider};
 use alloy_rpc_types::BlockId;
 use clap::{Parser, ValueEnum};
@@ -23,7 +24,7 @@ use tx_inclusion_precise_index::{
     default_fixture_output_path, fixture_from_proof, write_fixture_file,
 };
 use tx_inclusion_precise_index_lib::{
-    generate_merkle_proof, TransactionInclusionInput, INCLUDED_TX,
+    generate_merkle_absence_proof, generate_merkle_proof, TransactionInclusionInput, INCLUDED_TX,
 };
 use url::Url;
 
@@ -45,6 +46,16 @@ struct EVMArgs {
         help = "Transaction hash to generate proof for (overrides default)"
     )]
     transaction_hash: Option<String>,
+    #[arg(
+        long,
+        help = "Block number for a no-transaction-at-index absence proof"
+    )]
+    absence_block_number: Option<u64>,
+    #[arg(
+        long,
+        help = "Transaction index for a no-transaction-at-index absence proof"
+    )]
+    absence_transaction_index: Option<u64>,
 }
 
 /// Enum representing the available proof systems
@@ -78,49 +89,85 @@ async fn main() -> Result<()> {
     println!("Proof System: {:?}", args.system);
     println!("SP1 prover mode: {}", prover_mode);
 
-    let transaction_hash = args
-        .transaction_hash
-        .or_else(|| {
-            std::env::var("INCLUDED_TX")
-                .ok()
-                .map(|tx| tx.trim().to_string())
-                .filter(|tx| !tx.is_empty())
-        })
-        .unwrap_or_else(|| INCLUDED_TX.to_string());
+    let input = if args.absence_block_number.is_some() || args.absence_transaction_index.is_some() {
+        let block_number = args
+            .absence_block_number
+            .ok_or_else(|| eyre::eyre!("--absence-block-number is required for absence proofs"))?;
+        let tx_index = args.absence_transaction_index.ok_or_else(|| {
+            eyre::eyre!("--absence-transaction-index is required for absence proofs")
+        })?;
 
-    // Get the transaction details
-    let tx = provider
-        .get_transaction_by_hash(transaction_hash.parse()?)
-        .await?
-        .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
+        if args.transaction_hash.is_some() {
+            return Err(eyre::eyre!(
+                "--transaction-hash cannot be used with absence proof arguments"
+            ));
+        }
 
-    let block_number = tx
-        .block_number
-        .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
-    let tx_index = tx
-        .transaction_index
-        .ok_or_else(|| eyre::eyre!("Transaction index not found"))? as u64;
+        println!(
+            "Generating no-transaction-at-index proof for block {}, index {}",
+            block_number, tx_index
+        );
 
-    println!(
-        "Transaction found in block: {}, index: {}",
-        block_number, tx_index
-    );
+        let block = provider
+            .get_block(BlockId::Number(block_number.into()))
+            .await?
+            .ok_or_else(|| eyre::eyre!("Block not found"))?;
 
-    // Get the block with all transactions
-    let block = provider
-        .get_block(BlockId::Number(block_number.into()))
-        .await?
-        .ok_or_else(|| eyre::eyre!("Block not found"))?;
+        let merkle_proof = generate_merkle_absence_proof(&provider, block_number, tx_index).await?;
 
-    // Generate Merkle proof
-    let (merkle_proof, encoded_tx_bytes) =
-        generate_merkle_proof(&provider, block_number, tx_index).await?;
+        TransactionInclusionInput {
+            block_header: block.header.clone().into(),
+            raw_transaction: Bytes::new(),
+            transaction_index: tx_index,
+            merkle_proof,
+            prove_absence: true,
+        }
+    } else {
+        let transaction_hash = args
+            .transaction_hash
+            .or_else(|| {
+                std::env::var("INCLUDED_TX")
+                    .ok()
+                    .map(|tx| tx.trim().to_string())
+                    .filter(|tx| !tx.is_empty())
+            })
+            .unwrap_or_else(|| INCLUDED_TX.to_string());
 
-    let input = TransactionInclusionInput {
-        block_header: block.header.clone().into(),
-        raw_transaction: encoded_tx_bytes,
-        transaction_index: tx_index,
-        merkle_proof,
+        // Get the transaction details
+        let tx = provider
+            .get_transaction_by_hash(transaction_hash.parse()?)
+            .await?
+            .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
+
+        let block_number = tx
+            .block_number
+            .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
+        let tx_index =
+            tx.transaction_index
+                .ok_or_else(|| eyre::eyre!("Transaction index not found"))? as u64;
+
+        println!(
+            "Transaction found in block: {}, index: {}",
+            block_number, tx_index
+        );
+
+        // Get the block with all transactions
+        let block = provider
+            .get_block(BlockId::Number(block_number.into()))
+            .await?
+            .ok_or_else(|| eyre::eyre!("Block not found"))?;
+
+        // Generate Merkle proof
+        let (merkle_proof, encoded_tx_bytes) =
+            generate_merkle_proof(&provider, block_number, tx_index).await?;
+
+        TransactionInclusionInput {
+            block_header: block.header.clone().into(),
+            raw_transaction: encoded_tx_bytes,
+            transaction_index: tx_index,
+            merkle_proof,
+            prove_absence: false,
+        }
     };
 
     // Serialize input

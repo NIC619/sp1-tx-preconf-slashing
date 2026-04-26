@@ -6,19 +6,20 @@ The current repository is useful as a proof-of-concept for SP1-backed inclusion 
 
 ## Current Demo Boundary
 
-The demo currently supports one slashable violation:
+The demo currently supports two slashable exact-position violations:
 
 - a proposer signed a commitment for `transactionHash` at `transactionIndex` in `blockNumber`;
-- the challenger proves that a different transaction was included at that same index in that same block;
+- the challenger proves that a different transaction was included at that same index in that same block, or that no transaction exists at that same index;
 - the proof's `blockHash` must match a registered canonical block hash;
 - the proposer has enough bond to burn the fixed slash amount.
 
+The intended demo semantics are exact-position inclusion: fulfillment requires the committed transaction hash at exactly the committed transaction index.
+
 It does not currently slash:
 
-- omitted transactions,
-- empty blocks,
-- index-out-of-range promises,
 - broader "transaction appears anywhere in block" promises,
+- missed proposal duty,
+- proposer/builder identity failures,
 - conflicting commitments,
 - replay across richer commitment domains,
 - or production collateral and withdrawal-reservation failures.
@@ -52,18 +53,31 @@ Open design question:
 Demo state:
 
 - The SP1 program proves inclusion of one raw transaction at one precise index under a supplied transaction root.
-- It does not prove non-inclusion, absence at an index, transaction count bounds, or omission.
+- It also supports exact-index absence proofs for `NO_TRANSACTION_AT_INDEX`.
+- It does not prove whole-block non-inclusion under broader "appears anywhere" semantics.
 
 Why this is not production-ready:
 
-- A proposer can break the intuitive promise by omitting the transaction, producing an empty block, or producing a block where the promised index does not exist.
-- Those are currently detectable by the UI but not slashable by the contract.
+- Exact-position omission is slashable, but broader omission semantics are not.
+- If the intended production promise is "include this transaction anywhere in the block," exact-index absence is insufficient.
 
 Production directions:
 
 - Define the exact promise first.
 - Add proof modes for every slashable violation under that promise.
 - Make the public values encode a violation type, not just `isIncluded`.
+
+Near-term demo direction:
+
+- Keep hardening CLI/backend/UI support for exact-index exclusion proofs for `NO_TRANSACTION_AT_INDEX`.
+- Treat empty blocks and index-out-of-range promises as instances of exact-index absence.
+- Do not claim whole-block omission unless the commitment semantics are changed from exact-position inclusion.
+
+Missed proposal note:
+
+- The current demo does not prove that the commitment signer was the proposer/builder responsible for the target canonical block.
+- If the signer fails to propose and someone else proposes the canonical block, the demo judges the promise against the canonical block contents only.
+- Production missed-duty slashing needs separate proposer-assignment evidence and incentive design.
 
 ## 3. Commitment Semantics
 
