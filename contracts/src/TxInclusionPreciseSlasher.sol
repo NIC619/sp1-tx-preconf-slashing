@@ -3,10 +3,22 @@ pragma solidity ^0.8.20;
 
 import {ITransactionInclusionVerifier, PublicValuesStruct} from "./TransactionInclusionVerifier.sol";
 
+/// @notice Exact-position transaction inclusion promise signed by a slashable proposer.
+/// @dev The current demo semantics are deliberately narrow:
+/// `txHashAt(blockNumber, transactionIndex) == transactionHash`.
+///
+/// The EIP-712 domain separator binds the signature to this slasher contract and chain ID. The struct itself does not
+/// bind richer production concepts such as proposer duty, builder identity, full transaction bytes, replacement policy,
+/// cancellation policy, or anywhere-in-block inclusion.
 struct InclusionCommitment {
+    /// @notice Execution block number where the transaction is promised to appear.
     uint64 blockNumber;
+    /// @notice Keccak transaction hash promised at `transactionIndex`.
     bytes32 transactionHash;
+    /// @notice Exact transaction index promised in the canonical block's transaction trie/list.
     uint64 transactionIndex;
+    /// @notice Last timestamp at which this demo contract accepts a slash call for the commitment.
+    /// @dev This is currently both the commitment expiry and the dispute cutoff. Issue #4 tracks separating those.
     uint256 deadline;
 }
 

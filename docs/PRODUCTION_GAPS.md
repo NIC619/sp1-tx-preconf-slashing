@@ -84,10 +84,15 @@ Missed proposal note:
 Demo state:
 
 - `InclusionCommitment` binds only `blockNumber`, `transactionHash`, `transactionIndex`, and `deadline`.
+- The demo semantics are exact-position inclusion: the signer promises
+  `txHashAt(blockNumber, transactionIndex) == transactionHash`.
+- The EIP-712 domain binds the signature to the deployed slasher contract and chain ID, but the struct itself does not
+  bind a target execution chain separate from that signing domain.
 
 Why this is not production-ready:
 
-- The protocol does not yet specify whether the promise is exact-position inclusion, anywhere-in-block inclusion, inclusion by a slot/time, or inclusion under a particular builder/proposer role.
+- The demo specifies exact-position inclusion, but production may need a richer promise model such as
+  anywhere-in-block inclusion, inclusion by a slot/time, or inclusion under a particular builder/proposer role.
 - It does not bind chain ID, transaction bytes, fee constraints, replacement policy, or a nonce/salt.
 
 Production directions:

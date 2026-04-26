@@ -98,6 +98,12 @@ export const CONTRACTS = {
 ## Technical Details
 
 ### EIP-712 Structure
+
+The demo signs an exact-position inclusion promise:
+`txHashAt(blockNumber, transactionIndex) == transactionHash`. The UI may detect several user-facing failure reasons,
+but the contract only slashes exact-position violations: a different transaction at that index or no transaction at that
+index.
+
 ```javascript
 {
   blockNumber: uint64,
@@ -125,6 +131,7 @@ export const CONTRACTS = {
 - EIP-712 signatures include Sepolia's chainId (11155111) in the domain separator
 - Signature verification must use the same chainId as signing (Sepolia)
 - This is a demo-specific implementation - production deployments should align chainIds
+- The signature does not prove the signer was the canonical proposer/builder for the referenced mainnet block
 
 ## Development
 

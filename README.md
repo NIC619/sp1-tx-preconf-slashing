@@ -337,6 +337,10 @@ contract.slash(
 
 #### EIP-712 Commitment Structure
 
+The current demo commitment has exact-position semantics: the proposer signs that
+`txHashAt(blockNumber, transactionIndex) == transactionHash`. A slash proof must therefore show either a different
+transaction at that exact index or no transaction at that exact index.
+
 ```solidity
 struct InclusionCommitment {
     uint64 blockNumber;
@@ -345,6 +349,10 @@ struct InclusionCommitment {
     uint256 deadline;
 }
 ```
+
+The EIP-712 domain binds the signature to the deployed slasher contract and chain ID. The four-field struct does not
+claim anywhere-in-block inclusion, proposer-duty evidence, full transaction-byte constraints, cancellation semantics, or
+replacement semantics.
 
 ## Configuration
 
