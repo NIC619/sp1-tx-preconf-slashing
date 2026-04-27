@@ -131,12 +131,21 @@ Why this is not production-ready:
 
 - Observability is weak.
 - There is no lifecycle for cancellation, replacement, expiry, outstanding exposure, or reserved collateral.
+- Off-chain signed commitments can be slashable without registration, but they are harder for third parties to discover
+  before a dispute.
+- Registration is not required for the current demo slash-soundness path because the slasher verifies the EIP-712
+  signature and commitment contents at slash time.
 
 Production directions:
 
 - Consider lightweight commitment registration if lifecycle clarity matters.
 - Track outstanding slash exposure if withdrawal safety becomes in-scope.
 - Keep registration separate from canonical block registration; they solve different problems.
+
+Current pass decision:
+
+- Deferred. Adding proposer commitment registration now would pull the demo into lifecycle, collateral reservation, and
+  cancellation/replacement design. The current pass keeps those topics out of scope.
 
 ## 6. Collateral And Withdrawal Safety
 
