@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {ECDSA} from "../lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 import {ITransactionInclusionVerifier, PublicValuesStruct} from "./TransactionInclusionVerifier.sol";
 
 /// @notice Exact-position transaction inclusion promise signed by a slashable proposer.
@@ -290,9 +291,9 @@ contract TxInclusionPreciseSlasher {
         view
         returns (bool)
     {
-        bytes32 digest = _hashCommitment(commitment);
-        address recoveredSigner = ecrecover(digest, v, r, s);
-        return recoveredSigner == proposer;
+        (address recoveredSigner, ECDSA.RecoverError recoverError,) =
+            ECDSA.tryRecover(_hashCommitment(commitment), v, r, s);
+        return recoverError == ECDSA.RecoverError.NoError && recoveredSigner == proposer;
     }
 
     function getProposerBond(address proposer) external view returns (uint256) {

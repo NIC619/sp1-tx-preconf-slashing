@@ -40,6 +40,7 @@ contract TxInclusionPreciseSlasherTest is Test {
     uint256 internal constant SLASH_AMOUNT = 0.1 ether;
     uint256 internal constant MIN_BOND_AMOUNT = 0.1 ether;
     uint256 internal constant SLASHING_WINDOW = 1 days;
+    uint256 internal constant SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
     bytes32 internal constant PROOF_ROOT = bytes32(uint256(3));
     bytes32 internal constant PROOF_BLOCK_HASH = bytes32(uint256(1));
     bytes32 internal constant COMMITTED_TRANSACTION_HASH = bytes32(uint256(0x456));
@@ -301,6 +302,35 @@ contract TxInclusionPreciseSlasherTest is Test {
         vm.prank(user);
         vm.expectRevert(TxInclusionPreciseSlasher.InvalidSignature.selector);
         slasher.slash(commitment, proposer, v, r, s, new bytes(32), _dummyProof());
+    }
+
+    function testRevert_Slash_MalleableHighSSignature() public {
+        _bondProposer(1 ether);
+
+        InclusionCommitment memory commitment =
+            _makeCommitment(COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX);
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
+
+        uint8 malleatedV = v == 27 ? 28 : 27;
+        bytes32 malleatedS = bytes32(SECP256K1_N - uint256(s));
+
+        assertEq(ecrecover(slasher.hashCommitment(commitment), malleatedV, r, malleatedS), proposer);
+
+        vm.prank(user);
+        vm.expectRevert(TxInclusionPreciseSlasher.InvalidSignature.selector);
+        slasher.slash(commitment, proposer, malleatedV, r, malleatedS, new bytes(32), _dummyProof());
+    }
+
+    function testRevert_Slash_InvalidSignatureV() public {
+        _bondProposer(1 ether);
+
+        InclusionCommitment memory commitment =
+            _makeCommitment(COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX);
+        (, bytes32 r, bytes32 s) = _signCommitment(commitment);
+
+        vm.prank(user);
+        vm.expectRevert(TxInclusionPreciseSlasher.InvalidSignature.selector);
+        slasher.slash(commitment, proposer, 29, r, s, new bytes(32), _dummyProof());
     }
 
     function testRevert_Slash_InsufficientBond() public {

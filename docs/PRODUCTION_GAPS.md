@@ -200,18 +200,21 @@ Status for current pass:
 
 Demo state:
 
-- The contract uses a minimal `ecrecover` path.
+- The contract uses OpenZeppelin `ECDSA.tryRecover` for EOA commitment signatures.
 - The EIP-712 domain is simple.
+- ERC-1271 contract-wallet signatures are not supported.
 
 Why this is not production-ready:
 
-- Malleable or malformed signatures should be rejected with hardened utilities.
-- Contract wallets are not supported.
+- EOA signature recovery is now hardened against malformed signatures, zero-address recovery, invalid `v`, and high-`s`
+  malleability, but contract wallets are still unsupported.
 - Commitment domain fields are likely incomplete for multi-chain or upgraded deployments.
+- A production design must decide whether a slashable proposer can be a smart contract account and how that account maps
+  to consensus duties, collateral, and authorization.
 
 Production directions:
 
-- Use hardened ECDSA utilities.
+- Keep hardened ECDSA for EOAs.
 - Decide whether ERC-1271 contract signatures are required.
 - Include schema versioning and stronger replay domains.
 
