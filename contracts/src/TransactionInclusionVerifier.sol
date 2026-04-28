@@ -4,11 +4,18 @@ pragma solidity ^0.8.20;
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 
 struct PublicValuesStruct {
+    /// @notice Hash of the block header supplied to the SP1 program.
+    /// @dev Slashers should anchor this to canonical block data before acting on the proof.
     bytes32 blockHash;
     uint64 blockNumber;
     bytes32 transactionHash;
     uint64 transactionIndex;
     bool isIncluded;
+    /// @notice Transaction trie root from the supplied block header.
+    /// @dev In the current slasher design this is informational. The SP1 proof verifies the transaction proof against
+    /// this root, and the slasher enforces canonicality through `blockHash`, which commits to the full header including
+    /// this root. If a future design anchors transaction roots directly instead of whole block hashes, this value should
+    /// become an enforced slasher invariant.
     bytes32 verifiedAgainstRoot;
 }
 
@@ -72,7 +79,8 @@ contract TransactionInclusionVerifier {
     /// @return transactionHash The hash of the transaction being verified
     /// @return transactionIndex The index of the transaction within the block
     /// @return isIncluded Whether the transaction is included in the block
-    /// @return verifiedAgainstRoot The merkle root that the proof was verified against
+    /// @return verifiedAgainstRoot The transaction trie root that the proof was verified against. Informational when
+    ///         slashers already anchor the full block hash.
     function verifyTransactionInclusion(bytes calldata _publicValues, bytes calldata _proofBytes)
         public
         returns (

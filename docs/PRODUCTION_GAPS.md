@@ -31,6 +31,8 @@ Demo state:
 - The slasher has `canonicalBlockHashes[blockNumber]`.
 - The owner registers a block hash and timestamp with `registerCanonicalBlock(blockNumber, blockHash, blockTimestamp)`.
 - The proof output must match that registered hash.
+- The proof also exposes `verifiedAgainstRoot`, the transaction trie root from the proved block header. This is
+  informational in the current demo because the enforced block hash commits to that header/root.
 
 Why this is not production-ready:
 
@@ -43,6 +45,8 @@ Production directions:
 - For recent same-chain blocks, use the EVM `blockhash` window and require submitted headers to match the trusted block hash.
 - For older-but-still-recent consensus data, use EIP-4788 beacon roots plus proofs from the beacon root to the execution payload/header, then to the transaction trie.
 - For older history, use a header oracle, checkpoint system, light-client proof, or another explicitly trusted canonicality source.
+- If a future design registers transaction roots directly instead of whole block hashes, enforce the proof's
+  `verifiedAgainstRoot` against that registered root.
 
 Open design question:
 
