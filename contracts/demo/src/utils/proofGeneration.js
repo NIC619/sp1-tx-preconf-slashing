@@ -40,7 +40,7 @@ export const encodePublicValues = (publicValuesStruct) => {
   );
 };
 
-// Generate slashing proof for DIFFERENT_TRANSACTION case
+// Generate a slashing proof for a supported exact-position violation.
 export const generateSlashingProof = async (inclusionResult, commitment) => {
   try {
     // For the demo, we'll use the real proof if it matches our scenario

@@ -375,7 +375,7 @@ const UserTab = ({ wallet }) => {
           '0xc574ecb8': 'InvalidIncludedTransactionProof: Included-transaction proof has an invalid zero transaction hash',
           '0x187b05e7': 'InvalidNoTransactionProof: No-transaction proof must use a zero transaction hash',
           '0x7c946ed7': 'BlockNumberMismatch: Block number in proof does not match commitment',
-          '0xe3479721': 'MissingCanonicalBlockHash: No canonical block hash has been registered for this block',
+          '0xe3479721': 'MissingCanonicalBlockHash: No canonical block metadata has been registered for this block',
           '0xe42b5e7e': 'BlockHashMismatch: Proof block hash does not match the registered canonical block hash',
           '0x8c379a00': 'TransactionIndexMismatch: Transaction index in proof does not match commitment'
         };
@@ -560,7 +560,7 @@ const UserTab = ({ wallet }) => {
                 <div>Block: {verificationResult.commitment.blockNumber.toString()}</div>
                 <div>Transaction: {verificationResult.commitment.transactionHash}</div>
                 <div>Index: {verificationResult.commitment.transactionIndex.toString()}</div>
-                <div>Fulfillment Time: canonical block timestamp</div>
+                <div>Fulfillment Time: registered canonical block timestamp</div>
               </div>
             )}
           </div>
@@ -729,6 +729,7 @@ const UserTab = ({ wallet }) => {
 
                   <div className="warning" style={{ margin: '15px 0' }}>
                     <strong>Step 2:</strong> Execute slashing by calling the slasher contract. This will slash 0.1 ETH from the proposer's bond.
+                    The owner must register the canonical block hash and timestamp before this transaction can succeed.
                   </div>
 
                   <button

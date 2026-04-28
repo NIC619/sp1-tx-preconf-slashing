@@ -77,7 +77,6 @@ export const CONTRACTS = {
 ### For Users
 
 1. **Request Preconfirmation**: 
-   - Fill in block number, transaction hash, and index
    - Set the target block, transaction hash, and exact transaction index
    - Generate EIP-712 signature (in production, proposer would sign)
 
