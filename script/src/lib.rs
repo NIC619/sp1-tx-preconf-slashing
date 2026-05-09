@@ -9,9 +9,11 @@ alloy_sol_types::sol! {
     struct PublicValuesStruct {
         bytes32 blockHash;
         uint64 blockNumber;
+        bytes32 committedTransactionHash;
         bytes32 transactionHash;
         uint64 transactionIndex;
         bool isIncluded;
+        bool transactionCanBeIncluded;
         bytes32 verifiedAgainstRoot;
     }
 }
@@ -21,9 +23,11 @@ alloy_sol_types::sol! {
 pub struct SP1TransactionInclusionProofFixture {
     pub block_hash: String,
     pub block_number: u64,
+    pub committed_transaction_hash: String,
     pub transaction_hash: String,
     pub transaction_index: u64,
     pub is_included: bool,
+    pub transaction_can_be_included: bool,
     pub verified_against_root: String,
     pub vkey: String,
     pub public_values: String,
@@ -44,9 +48,14 @@ pub fn fixture_from_proof(
     Ok(SP1TransactionInclusionProofFixture {
         block_hash: format!("0x{}", hex::encode(decoded.blockHash.as_slice())),
         block_number: decoded.blockNumber,
+        committed_transaction_hash: format!(
+            "0x{}",
+            hex::encode(decoded.committedTransactionHash.as_slice())
+        ),
         transaction_hash: format!("0x{}", hex::encode(decoded.transactionHash.as_slice())),
         transaction_index: decoded.transactionIndex,
         is_included: decoded.isIncluded,
+        transaction_can_be_included: decoded.transactionCanBeIncluded,
         verified_against_root: format!("0x{}", hex::encode(decoded.verifiedAgainstRoot.as_slice())),
         vkey: vk.bytes32().to_string(),
         public_values: format!("0x{}", hex::encode(bytes)),
@@ -99,11 +108,22 @@ mod tests {
         );
         assert_eq!(fixture.block_number, decoded.blockNumber);
         assert_eq!(
+            fixture.committed_transaction_hash,
+            format!(
+                "0x{}",
+                hex::encode(decoded.committedTransactionHash.as_slice())
+            )
+        );
+        assert_eq!(
             fixture.transaction_hash,
             format!("0x{}", hex::encode(decoded.transactionHash.as_slice()))
         );
         assert_eq!(fixture.transaction_index, decoded.transactionIndex);
         assert_eq!(fixture.is_included, decoded.isIncluded);
+        assert_eq!(
+            fixture.transaction_can_be_included,
+            decoded.transactionCanBeIncluded
+        );
         assert_eq!(
             fixture.verified_against_root,
             format!("0x{}", hex::encode(decoded.verifiedAgainstRoot.as_slice()))
@@ -121,11 +141,22 @@ mod tests {
         );
         assert_eq!(fixture.block_number, decoded.blockNumber);
         assert_eq!(
+            fixture.committed_transaction_hash,
+            format!(
+                "0x{}",
+                hex::encode(decoded.committedTransactionHash.as_slice())
+            )
+        );
+        assert_eq!(
             fixture.transaction_hash,
             format!("0x{}", hex::encode(decoded.transactionHash.as_slice()))
         );
         assert_eq!(fixture.transaction_index, decoded.transactionIndex);
         assert_eq!(fixture.is_included, decoded.isIncluded);
+        assert_eq!(
+            fixture.transaction_can_be_included,
+            decoded.transactionCanBeIncluded
+        );
         assert_eq!(
             fixture.verified_against_root,
             format!("0x{}", hex::encode(decoded.verifiedAgainstRoot.as_slice()))
@@ -140,9 +171,17 @@ mod tests {
         assert_eq!(groth16.public_values, plonk.public_values);
         assert_eq!(groth16.block_hash, plonk.block_hash);
         assert_eq!(groth16.block_number, plonk.block_number);
+        assert_eq!(
+            groth16.committed_transaction_hash,
+            plonk.committed_transaction_hash
+        );
         assert_eq!(groth16.transaction_hash, plonk.transaction_hash);
         assert_eq!(groth16.transaction_index, plonk.transaction_index);
         assert_eq!(groth16.is_included, plonk.is_included);
+        assert_eq!(
+            groth16.transaction_can_be_included,
+            plonk.transaction_can_be_included
+        );
         assert_eq!(groth16.verified_against_root, plonk.verified_against_root);
         assert_ne!(groth16.vkey, plonk.vkey);
         assert_ne!(groth16.proof, plonk.proof);

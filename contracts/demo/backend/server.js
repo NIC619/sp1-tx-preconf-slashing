@@ -41,6 +41,9 @@ app.post('/api/generate-proof', async (req, res) => {
     if (isAbsenceProof) {
       args.push('--absence-block-number', String(blockNumber));
       args.push('--absence-transaction-index', String(transactionIndex));
+      if (transactionHash) {
+        args.push('--transaction-hash', transactionHash);
+      }
     } else {
       args.push('--transaction-hash', transactionHash);
     }

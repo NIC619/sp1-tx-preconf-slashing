@@ -10,6 +10,8 @@ The demo currently supports two slashable exact-position violations:
 
 - a proposer signed a commitment for `transactionHash` at `transactionIndex` in `blockNumber`;
 - the challenger proves that a different transaction was included at that same index in that same block, or that no transaction exists at that same index;
+- the proof separately binds the committed user transaction hash back to the signed commitment and proves that the
+  committed transaction was includable at the start of the target block;
 - the proof's `blockHash` must match a registered canonical block hash;
 - the proposer has enough bond to burn the fixed slash amount.
 
@@ -58,18 +60,36 @@ Demo state:
 
 - The SP1 program proves inclusion of one raw transaction at one precise index under a supplied transaction root.
 - It also supports exact-index absence proofs for `NO_TRANSACTION_AT_INDEX`.
+- The SP1 program also proves that the committed user transaction was includable at the start of the target block:
+  signer-account proof against the parent state root, nonce equality, sufficient upfront balance, and fee-cap/base-fee
+  compatibility.
+- Public values distinguish the committed user transaction from the transaction observed at the index:
+  `committedTransactionHash` is checked against the signed commitment, while `transactionHash` describes the indexed
+  transaction or the zero absence sentinel.
 - It does not prove whole-block non-inclusion under broader "appears anywhere" semantics.
 
 Why this is not production-ready:
 
 - Exact-position omission is slashable, but broader omission semantics are not.
 - If the intended production promise is "include this transaction anywhere in the block," exact-index absence is insufficient.
+- The start-of-block eligibility check does not prove the state transition prefix before `transactionIndex`. An earlier
+  same-block transaction could theoretically consume the committed sender nonce or enough balance before the promised
+  index.
+
+Current demo assumption:
+
+- Because the commitment signer is assumed to be the block builder/proposer for this demo, same-block invalidation before
+  the promised index is treated as proposer-controlled behavior. If they include an earlier nonce/balance-consuming
+  transaction and the committed transaction is not at the promised index, they are still accountable under the signed
+  exact-position commitment.
 
 Production directions:
 
 - Define the exact promise first.
 - Add proof modes for every slashable violation under that promise.
 - Make the public values encode a violation type, not just `isIncluded`.
+- If same-block invalidation should be ruled out cryptographically rather than by proposer accountability, add an
+  execution-prefix/state-transition proof up to the promised index.
 
 Near-term demo direction:
 

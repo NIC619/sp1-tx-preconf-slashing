@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 # alloy
 alloy-primitives = { version = "1.5.7", features = ["serde"] }
-alloy-consensus = { version = "2.0.1", features = ["serde", "serde-bincode-compat"] }
+alloy-consensus = { version = "2.0.1", features = ["serde", "serde-bincode-compat", "k256"] }
+alloy-eips = "2.0.1"
 alloy-rlp = "0.3.15"
 alloy-trie = "0.9.5"
 alloy-sol-types = { workspace = true }

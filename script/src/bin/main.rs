@@ -6,7 +6,7 @@ use eyre::Result;
 use sp1_sdk::{include_elf, utils, Elf, Prover, ProverClient, ProvingKey, SP1Stdin};
 use tx_inclusion_precise_index::decode_public_values;
 use tx_inclusion_precise_index_lib::{
-    generate_merkle_proof, TransactionInclusionInput, INCLUDED_TX,
+    generate_merkle_proof, generate_sender_account_witness, TransactionInclusionInput, INCLUDED_TX,
 };
 
 use url::Url;
@@ -71,9 +71,15 @@ async fn main() -> Result<()> {
     // Generate Merkle proof which includes the actual encoded transaction
     let (merkle_proof, encoded_tx_bytes) =
         generate_merkle_proof(&provider, block_number, tx_index).await?;
+    let sender_witness =
+        generate_sender_account_witness(&provider, block_number, &encoded_tx_bytes).await?;
 
     let input = TransactionInclusionInput {
         block_header: block.header.clone().into(),
+        parent_block_header: sender_witness.parent_block_header,
+        committed_raw_transaction: encoded_tx_bytes.clone(),
+        sender_account: sender_witness.account,
+        sender_account_proof: sender_witness.proof,
         raw_transaction: encoded_tx_bytes,
         transaction_index: tx_index,
         merkle_proof,
@@ -109,11 +115,19 @@ async fn main() -> Result<()> {
         );
         println!("Block Number: {}", decoded.blockNumber);
         println!(
+            "Committed Transaction Hash: 0x{}",
+            hex::encode(decoded.committedTransactionHash.as_slice())
+        );
+        println!(
             "Transaction Hash: 0x{}",
             hex::encode(decoded.transactionHash.as_slice())
         );
         println!("Transaction Index: {}", decoded.transactionIndex);
         println!("Is Included: {}", decoded.isIncluded);
+        println!(
+            "Transaction Can Be Included: {}",
+            decoded.transactionCanBeIncluded
+        );
         println!(
             "Verified Against Root: 0x{}",
             hex::encode(decoded.verifiedAgainstRoot.as_slice())

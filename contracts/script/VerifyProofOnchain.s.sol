@@ -9,9 +9,11 @@ import {PublicValuesStruct, TransactionInclusionVerifier} from "../src/Transacti
 struct SP1ProofFixtureJson {
     bytes32 blockHash;
     uint64 blockNumber;
+    bytes32 committedTransactionHash;
     bool isIncluded;
     bytes proof;
     bytes publicValues;
+    bool transactionCanBeIncluded;
     bytes32 transactionHash;
     uint64 transactionIndex;
     bytes32 verifiedAgainstRoot;
@@ -44,9 +46,11 @@ contract VerifyProofOnchain is Script {
         console2.log("Proof Data:");
         console2.log("- Block Hash:", vm.toString(fixture.blockHash));
         console2.log("- Block Number:", fixture.blockNumber);
+        console2.log("- Committed Transaction Hash:", vm.toString(fixture.committedTransactionHash));
         console2.log("- Transaction Hash:", vm.toString(fixture.transactionHash));
         console2.log("- Transaction Index:", fixture.transactionIndex);
         console2.log("- Is Included:", fixture.isIncluded);
+        console2.log("- Transaction Can Be Included:", fixture.transactionCanBeIncluded);
         console2.log("- Verified Against Root:", vm.toString(fixture.verifiedAgainstRoot));
         console2.log("- Verification Key:", vm.toString(fixture.vkey));
         console2.log("- Public Values Length:", fixture.publicValues.length, "bytes");
@@ -65,9 +69,11 @@ contract VerifyProofOnchain is Script {
         try verifier.verifyTransactionInclusion(fixture.publicValues, fixture.proof) returns (
             bytes32 blockHash,
             uint64 blockNumber,
+            bytes32 committedTransactionHash,
             bytes32 transactionHash,
             uint64 transactionIndex,
             bool isIncluded,
+            bool transactionCanBeIncluded,
             bytes32 verifiedAgainstRoot
         ) {
             console2.log("");
@@ -75,18 +81,22 @@ contract VerifyProofOnchain is Script {
             console2.log("Returned values:");
             console2.log("- Block Hash:", vm.toString(blockHash));
             console2.log("- Block Number:", blockNumber);
+            console2.log("- Committed Transaction Hash:", vm.toString(committedTransactionHash));
             console2.log("- Transaction Hash:", vm.toString(transactionHash));
             console2.log("- Transaction Index:", transactionIndex);
             console2.log("- Is Included:", isIncluded);
+            console2.log("- Transaction Can Be Included:", transactionCanBeIncluded);
             console2.log("- Verified Against Root:", vm.toString(verifiedAgainstRoot));
             console2.log("");
 
             // Verify the returned values match our expectations
             require(blockHash == fixture.blockHash, "Block hash mismatch");
             require(blockNumber == fixture.blockNumber, "Block number mismatch");
+            require(committedTransactionHash == fixture.committedTransactionHash, "Committed transaction hash mismatch");
             require(transactionHash == fixture.transactionHash, "Transaction hash mismatch");
             require(transactionIndex == fixture.transactionIndex, "Transaction index mismatch");
             require(isIncluded == fixture.isIncluded, "Is included mismatch");
+            require(transactionCanBeIncluded == fixture.transactionCanBeIncluded, "Transaction eligibility mismatch");
             require(verifiedAgainstRoot == fixture.verifiedAgainstRoot, "Verified against root mismatch");
 
             console2.log("ALL VALUES VERIFIED CORRECTLY!");
@@ -133,9 +143,11 @@ contract VerifyProofOnchain is Script {
             console2.log("Returned values:");
             console2.log("- Block Hash:", vm.toString(publicValues.blockHash));
             console2.log("- Block Number:", publicValues.blockNumber);
+            console2.log("- Committed Transaction Hash:", vm.toString(publicValues.committedTransactionHash));
             console2.log("- Transaction Hash:", vm.toString(publicValues.transactionHash));
             console2.log("- Transaction Index:", publicValues.transactionIndex);
             console2.log("- Is Included:", publicValues.isIncluded);
+            console2.log("- Transaction Can Be Included:", publicValues.transactionCanBeIncluded);
             console2.log("- Verified Against Root:", vm.toString(publicValues.verifiedAgainstRoot));
             console2.log("");
             console2.log("SUCCESS VIEW VERIFICATION SUCCESSFUL!");

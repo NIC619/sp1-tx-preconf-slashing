@@ -15,9 +15,11 @@ import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 struct SP1ProofFixtureJson {
     bytes32 blockHash;
     uint64 blockNumber;
+    bytes32 committedTransactionHash;
     bool isIncluded;
     bytes proof;
     bytes publicValues;
+    bool transactionCanBeIncluded;
     bytes32 transactionHash;
     uint64 transactionIndex;
     bytes32 verifiedAgainstRoot;
@@ -30,9 +32,11 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
     event TransactionInclusionVerified(
         bytes32 indexed blockHash,
         uint64 indexed blockNumber,
+        bytes32 committedTransactionHash,
         bytes32 indexed transactionHash,
         uint64 transactionIndex,
-        bool isIncluded
+        bool isIncluded,
+        bool transactionCanBeIncluded
     );
 
     event VerificationKeyUpdated(bytes32 indexed oldVKey, bytes32 indexed newVKey);
@@ -66,22 +70,34 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
         emit TransactionInclusionVerified(
             fixture.blockHash,
             fixture.blockNumber,
+            fixture.committedTransactionHash,
             fixture.transactionHash,
             fixture.transactionIndex,
-            fixture.isIncluded
+            fixture.isIncluded,
+            fixture.transactionCanBeIncluded
         );
 
         (
             bytes32 blockHash,
             uint64 blockNumber,
+            bytes32 committedTransactionHash,
             bytes32 transactionHash,
             uint64 transactionIndex,
             bool isIncluded,
+            bool transactionCanBeIncluded,
             bytes32 verifiedAgainstRoot
         ) = txInclusionVerifier.verifyTransactionInclusion(fixture.publicValues, fixture.proof);
 
         _assertFixtureValues(
-            fixture, blockHash, blockNumber, transactionHash, transactionIndex, isIncluded, verifiedAgainstRoot
+            fixture,
+            blockHash,
+            blockNumber,
+            committedTransactionHash,
+            transactionHash,
+            transactionIndex,
+            isIncluded,
+            transactionCanBeIncluded,
+            verifiedAgainstRoot
         );
     }
 
@@ -142,16 +158,20 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
         SP1ProofFixtureJson memory fixture,
         bytes32 blockHash,
         uint64 blockNumber,
+        bytes32 committedTransactionHash,
         bytes32 transactionHash,
         uint64 transactionIndex,
         bool isIncluded,
+        bool transactionCanBeIncluded,
         bytes32 verifiedAgainstRoot
     ) internal pure {
         assertEq(blockHash, fixture.blockHash);
         assertEq(blockNumber, fixture.blockNumber);
+        assertEq(committedTransactionHash, fixture.committedTransactionHash);
         assertEq(transactionHash, fixture.transactionHash);
         assertEq(transactionIndex, fixture.transactionIndex);
         assertEq(isIncluded, fixture.isIncluded);
+        assertEq(transactionCanBeIncluded, fixture.transactionCanBeIncluded);
         assertEq(verifiedAgainstRoot, fixture.verifiedAgainstRoot);
     }
 
@@ -161,9 +181,11 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
     {
         assertEq(publicValues.blockHash, fixture.blockHash);
         assertEq(publicValues.blockNumber, fixture.blockNumber);
+        assertEq(publicValues.committedTransactionHash, fixture.committedTransactionHash);
         assertEq(publicValues.transactionHash, fixture.transactionHash);
         assertEq(publicValues.transactionIndex, fixture.transactionIndex);
         assertEq(publicValues.isIncluded, fixture.isIncluded);
+        assertEq(publicValues.transactionCanBeIncluded, fixture.transactionCanBeIncluded);
         assertEq(publicValues.verifiedAgainstRoot, fixture.verifiedAgainstRoot);
     }
 }

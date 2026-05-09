@@ -65,6 +65,8 @@ contract TxInclusionPreciseSlasher {
     error OnlyOwner();
     error InvalidIncludedTransactionProof();
     error InvalidNoTransactionProof();
+    error CommittedTransactionHashMismatch();
+    error TransactionCannotBeIncluded();
     error TransactionIndexMismatch();
 
     constructor(address _inclusionVerifier, uint256 _withdrawalDelay) {
@@ -154,6 +156,13 @@ contract TxInclusionPreciseSlasher {
     /// `txHashAt(commitment.blockNumber, commitment.transactionIndex) == commitment.transactionHash`.
     ///
     /// A successful proof must be anchored to the owner-registered canonical block hash for the committed block number.
+    /// It must also prove that the committed transaction was includable at the start of that block and bind
+    /// `proofOutput.committedTransactionHash` back to `commitment.transactionHash`.
+    ///
+    /// The eligibility check is deliberately start-of-block scoped. It covers prior-block nonce use and balance
+    /// depletion, but it does not prove the state-transition prefix before `transactionIndex`. The demo assumes the
+    /// commitment signer controls block construction; including an earlier same-block transaction that invalidates the
+    /// committed transaction is therefore proposer-controlled behavior and does not excuse the exact-position miss.
     /// Once anchored, two proof shapes are accepted:
     ///
     /// 1. Different transaction at index:
@@ -226,6 +235,14 @@ contract TxInclusionPreciseSlasher {
         // Demo canonicality anchor: the proof's block hash must match the trusted hash registered for this block.
         if (proofOutput.blockHash != canonicalBlockHash) {
             revert BlockHashMismatch();
+        }
+
+        if (proofOutput.committedTransactionHash != commitment.transactionHash) {
+            revert CommittedTransactionHashMismatch();
+        }
+
+        if (!proofOutput.transactionCanBeIncluded) {
+            revert TransactionCannotBeIncluded();
         }
 
         if (proofOutput.isIncluded) {

@@ -24,7 +24,8 @@ use tx_inclusion_precise_index::{
     default_fixture_output_path, fixture_from_proof, write_fixture_file,
 };
 use tx_inclusion_precise_index_lib::{
-    generate_merkle_absence_proof, generate_merkle_proof, TransactionInclusionInput, INCLUDED_TX,
+    encode_transaction_for_trie, generate_merkle_absence_proof, generate_merkle_proof,
+    generate_sender_account_witness, TransactionInclusionInput, INCLUDED_TX,
 };
 use url::Url;
 
@@ -97,12 +98,6 @@ async fn main() -> Result<()> {
             eyre::eyre!("--absence-transaction-index is required for absence proofs")
         })?;
 
-        if args.transaction_hash.is_some() {
-            return Err(eyre::eyre!(
-                "--transaction-hash cannot be used with absence proof arguments"
-            ));
-        }
-
         println!(
             "Generating no-transaction-at-index proof for block {}, index {}",
             block_number, tx_index
@@ -114,9 +109,30 @@ async fn main() -> Result<()> {
             .ok_or_else(|| eyre::eyre!("Block not found"))?;
 
         let merkle_proof = generate_merkle_absence_proof(&provider, block_number, tx_index).await?;
+        let committed_transaction_hash = args
+            .transaction_hash
+            .or_else(|| {
+                std::env::var("INCLUDED_TX")
+                    .ok()
+                    .map(|tx| tx.trim().to_string())
+                    .filter(|tx| !tx.is_empty())
+            })
+            .unwrap_or_else(|| INCLUDED_TX.to_string());
+        let committed_tx = provider
+            .get_transaction_by_hash(committed_transaction_hash.parse()?)
+            .await?
+            .ok_or_else(|| eyre::eyre!("Committed transaction not found"))?;
+        let committed_raw_transaction = encode_transaction_for_trie(&committed_tx)?;
+        let sender_witness =
+            generate_sender_account_witness(&provider, block_number, &committed_raw_transaction)
+                .await?;
 
         TransactionInclusionInput {
             block_header: block.header.clone().into(),
+            parent_block_header: sender_witness.parent_block_header,
+            committed_raw_transaction,
+            sender_account: sender_witness.account,
+            sender_account_proof: sender_witness.proof,
             raw_transaction: Bytes::new(),
             transaction_index: tx_index,
             merkle_proof,
@@ -160,9 +176,15 @@ async fn main() -> Result<()> {
         // Generate Merkle proof
         let (merkle_proof, encoded_tx_bytes) =
             generate_merkle_proof(&provider, block_number, tx_index).await?;
+        let sender_witness =
+            generate_sender_account_witness(&provider, block_number, &encoded_tx_bytes).await?;
 
         TransactionInclusionInput {
             block_header: block.header.clone().into(),
+            parent_block_header: sender_witness.parent_block_header,
+            committed_raw_transaction: encoded_tx_bytes.clone(),
+            sender_account: sender_witness.account,
+            sender_account_proof: sender_witness.proof,
             raw_transaction: encoded_tx_bytes,
             transaction_index: tx_index,
             merkle_proof,
@@ -224,9 +246,14 @@ fn create_proof_fixture(
     println!("Verification Key: {}", fixture.vkey);
     println!("Block Hash: {}", fixture.block_hash);
     println!("Block Number: {}", fixture.block_number);
+    println!("Committed Transaction Hash: {}", fixture.committed_transaction_hash);
     println!("Transaction Hash: {}", fixture.transaction_hash);
     println!("Transaction Index: {}", fixture.transaction_index);
     println!("Is Included: {}", fixture.is_included);
+    println!(
+        "Transaction Can Be Included: {}",
+        fixture.transaction_can_be_included
+    );
     println!("Verified Against Root: {}", fixture.verified_against_root);
     println!("Public Values: {}", fixture.public_values);
     println!(

@@ -257,6 +257,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "borsh",
+ "k256",
  "serde",
  "serde_with",
  "thiserror 2.0.18",
@@ -7979,6 +7980,7 @@ name = "tx-inclusion-precise-index-client"
 version = "0.0.0"
 dependencies = [
  "alloy-consensus 2.0.1",
+ "alloy-eips 2.0.1",
  "alloy-primitives",
  "alloy-rlp",
  "alloy-sol-types",

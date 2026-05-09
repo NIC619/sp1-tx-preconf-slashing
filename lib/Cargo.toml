@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 # alloy dependencies needed by the lib
 alloy = "2.0.1"
-alloy-consensus = { version = "2.0.1", features = ["serde", "serde-bincode-compat"] }
+alloy-consensus = { version = "2.0.1", features = ["serde", "serde-bincode-compat", "k256"] }
 alloy-primitives = { version = "1.5.7", features = ["serde"] }
 alloy-rpc-types = { version = "2.0.1", features = ["eth"] }
 alloy-rlp = "0.3.15"

@@ -4,9 +4,11 @@ import { ethers } from 'ethers';
 export const PROOF_FIXTURE = {
   "blockHash": "0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff33166021",
   "blockNumber": 23354683,
+  "committedTransactionHash": "0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436",
   "transactionHash": "0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436",
   "transactionIndex": 87,
   "isIncluded": true,
+  "transactionCanBeIncluded": true,
   "verifiedAgainstRoot": "0xad94b067bdbce131ff2c2bb4ca7274ea5c48cfa5123b1b5687c25061ff1b8190",
   "vkey": "0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769",
   "publicValues": "0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff331660210000000000000000000000000000000000000000000000000000000001645d3bd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f943600000000000000000000000000000000000000000000000000000000000000570000000000000000000000000000000000000000000000000000000000000001ad94b067bdbce131ff2c2bb4ca7274ea5c48cfa5123b1b5687c25061ff1b8190",
@@ -14,13 +16,24 @@ export const PROOF_FIXTURE = {
 };
 
 // PublicValuesStruct format for the contract
-export const createPublicValuesStruct = (blockHash, blockNumber, transactionHash, transactionIndex, isIncluded, verifiedAgainstRoot) => {
+export const createPublicValuesStruct = (
+  blockHash,
+  blockNumber,
+  committedTransactionHash,
+  transactionHash,
+  transactionIndex,
+  isIncluded,
+  transactionCanBeIncluded,
+  verifiedAgainstRoot
+) => {
   return {
     blockHash,
     blockNumber,
+    committedTransactionHash,
     transactionHash,
     transactionIndex,
     isIncluded,
+    transactionCanBeIncluded,
     verifiedAgainstRoot
   };
 };
@@ -28,13 +41,15 @@ export const createPublicValuesStruct = (blockHash, blockNumber, transactionHash
 // Encode public values for contract call
 export const encodePublicValues = (publicValuesStruct) => {
   return ethers.AbiCoder.defaultAbiCoder().encode(
-    ['tuple(bytes32,uint64,bytes32,uint64,bool,bytes32)'],
+    ['tuple(bytes32,uint64,bytes32,bytes32,uint64,bool,bool,bytes32)'],
     [[
       publicValuesStruct.blockHash,
       publicValuesStruct.blockNumber,
+      publicValuesStruct.committedTransactionHash,
       publicValuesStruct.transactionHash,
       publicValuesStruct.transactionIndex,
       publicValuesStruct.isIncluded,
+      publicValuesStruct.transactionCanBeIncluded,
       publicValuesStruct.verifiedAgainstRoot
     ]]
   );
@@ -65,9 +80,11 @@ export const generateSlashingProof = async (inclusionResult, commitment) => {
       const publicValuesStruct = createPublicValuesStruct(
         PROOF_FIXTURE.blockHash,
         PROOF_FIXTURE.blockNumber,
+        PROOF_FIXTURE.committedTransactionHash,
         PROOF_FIXTURE.transactionHash,
         PROOF_FIXTURE.transactionIndex,
         PROOF_FIXTURE.isIncluded,
+        PROOF_FIXTURE.transactionCanBeIncluded,
         PROOF_FIXTURE.verifiedAgainstRoot
       );
 
@@ -147,9 +164,11 @@ export const generateRealTimeProof = async (inclusionResult) => {
     const publicValuesStruct = createPublicValuesStruct(
       fixture.blockHash,
       fixture.blockNumber,
+      fixture.committedTransactionHash,
       fixture.transactionHash,
       fixture.transactionIndex,
       fixture.isIncluded,
+      fixture.transactionCanBeIncluded,
       fixture.verifiedAgainstRoot
     );
 
@@ -222,6 +241,14 @@ export const validateSlashingProof = (proof, commitment, inclusionResult) => {
     errors.push('Proof transaction index does not match commitment');
   }
 
+  if (proof.publicValuesStruct.committedTransactionHash.toLowerCase() !== commitment.transactionHash.toLowerCase()) {
+    errors.push('Proof committed transaction hash does not match commitment');
+  }
+
+  if (!proof.publicValuesStruct.transactionCanBeIncluded) {
+    errors.push('Committed transaction was not includable at the target block');
+  }
+
   // Check isIncluded is true
   if (inclusionResult.violationType === 'DIFFERENT_TRANSACTION') {
     if (!proof.publicValuesStruct.isIncluded) {
@@ -259,8 +286,10 @@ export const formatProofInfo = (proof) => {
     isReal: proof.isRealProof,
     blockNumber: proof.publicValuesStruct.blockNumber.toString(),
     transactionHash: proof.publicValuesStruct.transactionHash,
+    committedTransactionHash: proof.publicValuesStruct.committedTransactionHash,
     transactionIndex: proof.publicValuesStruct.transactionIndex.toString(),
     isIncluded: proof.publicValuesStruct.isIncluded,
+    transactionCanBeIncluded: proof.publicValuesStruct.transactionCanBeIncluded,
     publicValuesLength: proof.publicValues.length,
     proofBytesLength: proof.proofBytes.length
   };

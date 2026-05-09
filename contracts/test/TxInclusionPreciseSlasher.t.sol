@@ -9,9 +9,11 @@ contract MockTransactionInclusionVerifier is ITransactionInclusionVerifier {
     PublicValuesStruct internal mockReturn = PublicValuesStruct({
         blockHash: bytes32(uint256(1)),
         blockNumber: uint64(100),
+        committedTransactionHash: bytes32(uint256(0x456)),
         transactionHash: bytes32(uint256(2)),
         transactionIndex: uint64(1),
         isIncluded: false,
+        transactionCanBeIncluded: true,
         verifiedAgainstRoot: bytes32(uint256(3))
     });
 
@@ -412,6 +414,54 @@ contract TxInclusionPreciseSlasherTest is Test {
         slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
     }
 
+    function testRevert_Slash_CommittedTransactionHashMismatch() public {
+        _bondProposer(1 ether);
+        _registerCanonicalBlock();
+
+        InclusionCommitment memory commitment =
+            _makeCommitment(COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX);
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
+
+        mockVerifier.setMockReturn(
+            _makeProofOutputWithCommittedHash(
+                bytes32(uint256(0xdead)),
+                COMMITTED_BLOCK_NUMBER,
+                INCLUDED_TRANSACTION_HASH,
+                COMMITTED_TRANSACTION_INDEX,
+                true,
+                true
+            )
+        );
+
+        vm.prank(user);
+        vm.expectRevert(TxInclusionPreciseSlasher.CommittedTransactionHashMismatch.selector);
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
+    }
+
+    function testRevert_Slash_TransactionCannotBeIncluded() public {
+        _bondProposer(1 ether);
+        _registerCanonicalBlock();
+
+        InclusionCommitment memory commitment =
+            _makeCommitment(COMMITTED_BLOCK_NUMBER, COMMITTED_TRANSACTION_HASH, COMMITTED_TRANSACTION_INDEX);
+        (uint8 v, bytes32 r, bytes32 s) = _signCommitment(commitment);
+
+        mockVerifier.setMockReturn(
+            _makeProofOutputWithCommittedHash(
+                COMMITTED_TRANSACTION_HASH,
+                COMMITTED_BLOCK_NUMBER,
+                INCLUDED_TRANSACTION_HASH,
+                COMMITTED_TRANSACTION_INDEX,
+                true,
+                false
+            )
+        );
+
+        vm.prank(user);
+        vm.expectRevert(TxInclusionPreciseSlasher.TransactionCannotBeIncluded.selector);
+        slasher.slash(commitment, proposer, v, r, s, _encodeProofOutput(true), _dummyProof());
+    }
+
     function testRevert_Slash_InvalidNoTransactionProof() public {
         _bondProposer(1 ether);
         _registerCanonicalBlock();
@@ -515,9 +565,31 @@ contract TxInclusionPreciseSlasherTest is Test {
         return PublicValuesStruct({
             blockHash: PROOF_BLOCK_HASH,
             blockNumber: blockNumber,
+            committedTransactionHash: COMMITTED_TRANSACTION_HASH,
             transactionHash: transactionHash,
             transactionIndex: transactionIndex,
             isIncluded: isIncluded,
+            transactionCanBeIncluded: true,
+            verifiedAgainstRoot: PROOF_ROOT
+        });
+    }
+
+    function _makeProofOutputWithCommittedHash(
+        bytes32 committedTransactionHash,
+        uint64 blockNumber,
+        bytes32 transactionHash,
+        uint64 transactionIndex,
+        bool isIncluded,
+        bool transactionCanBeIncluded
+    ) internal pure returns (PublicValuesStruct memory) {
+        return PublicValuesStruct({
+            blockHash: PROOF_BLOCK_HASH,
+            blockNumber: blockNumber,
+            committedTransactionHash: committedTransactionHash,
+            transactionHash: transactionHash,
+            transactionIndex: transactionIndex,
+            isIncluded: isIncluded,
+            transactionCanBeIncluded: transactionCanBeIncluded,
             verifiedAgainstRoot: PROOF_ROOT
         });
     }

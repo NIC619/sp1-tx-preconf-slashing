@@ -1,6 +1,7 @@
 use alloy::providers::Provider;
-use alloy_consensus::Header;
-use alloy_primitives::{Bytes, B256};
+use alloy_consensus::{transaction::SignerRecoverable, Header, Transaction, TxEnvelope};
+use alloy_eips::eip2718::Decodable2718;
+use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_rpc_types::{BlockId, BlockTransactions};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,14 @@ pub const INCLUDED_TX: &str = "0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d76
 pub struct TransactionInclusionInput {
     #[serde_as(as = "alloy_consensus::serde_bincode_compat::Header")]
     pub block_header: Header,
+    #[serde_as(as = "alloy_consensus::serde_bincode_compat::Header")]
+    pub parent_block_header: Header,
+    /// The signed user transaction the proposer promised could be included.
+    pub committed_raw_transaction: Bytes,
+    /// Sender account state proved against `parent_block_header.state_root`.
+    pub sender_account: AccountState,
+    pub sender_account_proof: Vec<Bytes>,
+    /// Transaction value stored at `transaction_index`, when proving inclusion of a different tx.
     pub raw_transaction: Bytes,
     /// The precise index where the transaction should be located in the block
     pub transaction_index: u64,
@@ -28,10 +37,28 @@ pub struct TransactionInclusionInput {
 pub struct TransactionInclusionProof {
     pub block_hash: B256,
     pub block_number: u64,
+    pub committed_transaction_hash: B256,
     pub transaction_hash: B256,
     pub transaction_index: u64,
     pub is_included: bool,
+    pub transaction_can_be_included: bool,
     pub verified_against_root: B256,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountState {
+    pub nonce: u64,
+    pub balance: U256,
+    pub storage_root: B256,
+    pub code_hash: B256,
+}
+
+#[derive(Debug, Clone)]
+pub struct SenderAccountWitness {
+    pub parent_block_header: Header,
+    pub sender: Address,
+    pub account: AccountState,
+    pub proof: Vec<Bytes>,
 }
 
 /// Generate real Merkle proof for a transaction at a precise index in a block with exact Ethereum encoding
@@ -194,6 +221,78 @@ pub async fn generate_merkle_proof(
     println!("Trie root: {:?}", computed_root);
 
     Ok((proof_bytes, target_tx_encoded.clone()))
+}
+
+/// Generate the parent-block account witness needed to prove a signed transaction was still
+/// includable at the start of `block_number`.
+pub async fn generate_sender_account_witness(
+    provider: &impl Provider,
+    block_number: u64,
+    raw_transaction: &Bytes,
+) -> Result<SenderAccountWitness> {
+    if block_number == 0 {
+        return Err(eyre::eyre!("Block 0 has no parent state to prove against"));
+    }
+
+    let tx = TxEnvelope::decode_2718_exact(raw_transaction.as_ref())
+        .map_err(|e| eyre::eyre!("Failed to decode committed transaction: {:?}", e))?;
+    let sender = tx
+        .recover_signer()
+        .map_err(|e| eyre::eyre!("Failed to recover committed transaction signer: {:?}", e))?;
+
+    let parent_block_number = block_number - 1;
+    let parent_block = provider
+        .get_block(BlockId::Number(parent_block_number.into()))
+        .await?
+        .ok_or_else(|| eyre::eyre!("Parent block not found: {}", parent_block_number))?;
+
+    let proof_response = provider
+        .get_proof(sender, Vec::new())
+        .block_id(BlockId::Number(parent_block_number.into()))
+        .await?;
+
+    let account = AccountState {
+        nonce: proof_response.nonce,
+        balance: proof_response.balance,
+        storage_root: proof_response.storage_hash,
+        code_hash: proof_response.code_hash,
+    };
+
+    if account.nonce != tx.nonce() {
+        return Err(eyre::eyre!(
+            "Committed transaction is not includable at block {}: sender nonce is {}, transaction nonce is {}",
+            block_number,
+            account.nonce,
+            tx.nonce()
+        ));
+    }
+
+    let gas_cost = U256::from(tx.gas_limit()) * U256::from(tx.max_fee_per_gas());
+    let blob_cost = match (tx.blob_gas_used(), tx.max_fee_per_blob_gas()) {
+        (Some(blob_gas_used), Some(max_fee_per_blob_gas)) => {
+            U256::from(blob_gas_used) * U256::from(max_fee_per_blob_gas)
+        }
+        _ => U256::ZERO,
+    };
+    let upfront_cost = gas_cost
+        .checked_add(blob_cost)
+        .and_then(|cost| cost.checked_add(tx.value()))
+        .ok_or_else(|| eyre::eyre!("Committed transaction upfront cost overflowed"))?;
+    if account.balance < upfront_cost {
+        return Err(eyre::eyre!(
+            "Committed transaction is not includable at block {}: sender balance {} is below upfront cost {}",
+            block_number,
+            account.balance,
+            upfront_cost
+        ));
+    }
+
+    Ok(SenderAccountWitness {
+        parent_block_header: parent_block.header.into(),
+        sender,
+        account,
+        proof: proof_response.account_proof,
+    })
 }
 
 /// Generate a Merkle Patricia Trie exclusion proof for a transaction index in a block.

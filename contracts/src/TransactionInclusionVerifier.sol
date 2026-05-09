@@ -8,9 +8,13 @@ struct PublicValuesStruct {
     /// @dev Slashers should anchor this to canonical block data before acting on the proof.
     bytes32 blockHash;
     uint64 blockNumber;
+    /// @notice Hash of the signed user transaction whose target-block eligibility was proved.
+    bytes32 committedTransactionHash;
     bytes32 transactionHash;
     uint64 transactionIndex;
     bool isIncluded;
+    /// @notice True when the committed transaction was proved includable at the start of this block.
+    bool transactionCanBeIncluded;
     /// @notice Transaction trie root from the supplied block header.
     /// @dev In the current slasher design this is informational. The SP1 proof verifies the transaction proof against
     /// this root, and the slasher enforces canonicality through `blockHash`, which commits to the full header including
@@ -49,9 +53,11 @@ contract TransactionInclusionVerifier {
     event TransactionInclusionVerified(
         bytes32 indexed blockHash,
         uint64 indexed blockNumber,
+        bytes32 committedTransactionHash,
         bytes32 indexed transactionHash,
         uint64 transactionIndex,
-        bool isIncluded
+        bool isIncluded,
+        bool transactionCanBeIncluded
     );
 
     /// @notice Event emitted when the verification key is updated
@@ -76,9 +82,11 @@ contract TransactionInclusionVerifier {
     /// @param _proofBytes The encoded proof.
     /// @return blockHash The hash of the block containing the transaction
     /// @return blockNumber The number of the block containing the transaction
+    /// @return committedTransactionHash The hash of the signed user transaction whose eligibility was proved
     /// @return transactionHash The hash of the transaction being verified
     /// @return transactionIndex The index of the transaction within the block
     /// @return isIncluded Whether the transaction is included in the block
+    /// @return transactionCanBeIncluded Whether the committed transaction was includable at the start of the block
     /// @return verifiedAgainstRoot The transaction trie root that the proof was verified against. Informational when
     ///         slashers already anchor the full block hash.
     function verifyTransactionInclusion(bytes calldata _publicValues, bytes calldata _proofBytes)
@@ -86,9 +94,11 @@ contract TransactionInclusionVerifier {
         returns (
             bytes32 blockHash,
             uint64 blockNumber,
+            bytes32 committedTransactionHash,
             bytes32 transactionHash,
             uint64 transactionIndex,
             bool isIncluded,
+            bool transactionCanBeIncluded,
             bytes32 verifiedAgainstRoot
         )
     {
@@ -98,17 +108,21 @@ contract TransactionInclusionVerifier {
         emit TransactionInclusionVerified(
             publicValues.blockHash,
             publicValues.blockNumber,
+            publicValues.committedTransactionHash,
             publicValues.transactionHash,
             publicValues.transactionIndex,
-            publicValues.isIncluded
+            publicValues.isIncluded,
+            publicValues.transactionCanBeIncluded
         );
         
         return (
             publicValues.blockHash,
             publicValues.blockNumber,
+            publicValues.committedTransactionHash,
             publicValues.transactionHash,
             publicValues.transactionIndex,
             publicValues.isIncluded,
+            publicValues.transactionCanBeIncluded,
             publicValues.verifiedAgainstRoot
         );
     }
