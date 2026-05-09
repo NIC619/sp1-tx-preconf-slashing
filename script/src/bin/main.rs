@@ -4,9 +4,12 @@ use alloy_rpc_types::BlockId;
 use clap::Parser;
 use eyre::Result;
 use sp1_sdk::{include_elf, utils, Elf, Prover, ProverClient, ProvingKey, SP1Stdin};
-use tx_inclusion_precise_index::decode_public_values;
+use tx_inclusion_precise_index::{
+    decode_public_values, select_first_transaction_from_recent_finalized_block,
+    RECENT_FINALIZED_OFFSET,
+};
 use tx_inclusion_precise_index_lib::{
-    generate_merkle_proof, generate_sender_account_witness, TransactionInclusionInput, INCLUDED_TX,
+    generate_merkle_proof, generate_sender_account_witness, TransactionInclusionInput,
 };
 
 use url::Url;
@@ -21,6 +24,12 @@ struct Args {
 
     #[clap(long, default_value = "https://ethereum-rpc.publicnode.com")]
     eth_rpc_url: Url,
+
+    #[clap(
+        long,
+        help = "Transaction hash to prove; omitted means first transaction from finalized - 2"
+    )]
+    transaction_hash: Option<String>,
 
     #[clap(long, conflicts_with = "prove")]
     execute: bool,
@@ -44,23 +53,36 @@ async fn main() -> Result<()> {
 
     println!("=== Testing transaction inclusion at precise index ===");
 
-    // Get the transaction details
-    let tx = provider
-        .get_transaction_by_hash(INCLUDED_TX.parse()?)
-        .await?
-        .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
+    let (block_number, tx_index) = if let Some(transaction_hash) = args.transaction_hash {
+        // Get the transaction details
+        let tx = provider
+            .get_transaction_by_hash(transaction_hash.parse()?)
+            .await?
+            .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
 
-    let block_number = tx
-        .block_number
-        .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
-    let tx_index = tx
-        .transaction_index
-        .ok_or_else(|| eyre::eyre!("Transaction index not found"))? as u64;
+        let block_number = tx
+            .block_number
+            .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
+        let tx_index =
+            tx.transaction_index
+                .ok_or_else(|| eyre::eyre!("Transaction index not found"))? as u64;
 
-    println!(
-        "Transaction found in block: {}, index: {}",
-        block_number, tx_index
-    );
+        println!(
+            "Transaction found in block: {}, index: {}",
+            block_number, tx_index
+        );
+        (block_number, tx_index)
+    } else {
+        let selection = select_first_transaction_from_recent_finalized_block(&provider).await?;
+        println!(
+            "Selected first transaction from block {} (finalized block {} - {}, {} transactions)",
+            selection.block_number,
+            selection.finalized_block_number,
+            RECENT_FINALIZED_OFFSET,
+            selection.transaction_count
+        );
+        (selection.block_number, selection.transaction_index)
+    };
 
     // Get the block with all transactions
     let block = provider

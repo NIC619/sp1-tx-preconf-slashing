@@ -120,7 +120,7 @@ For direct interaction with the ZK proof system:
 3. **Generate EVM-Compatible Proofs** (Succinct Network):
    ```sh
    cd script
-   # Use default hardcoded transaction
+   # Live default: finalized - 2, first transaction in the block
    SP1_PROVER=network cargo run --release --bin evm -- --system groth16
    
    # Generate proof for specific transaction
@@ -157,12 +157,13 @@ For direct interaction with the ZK proof system:
 
 | Script | Purpose | Requirements |
 |--------|---------|--------------|
-| `cargo run --release -- --execute` | Execute program locally | Local |
-| `cargo run --release -- --prove` | Generate core proof | Local |
-| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16` | Prover network EVM proofs (recommended) | Network key + PROVE tokens |
+| `cargo run --release -- --execute` | Execute live default input locally (`finalized - 2`, index `0`) | Local |
+| `cargo run --release -- --prove` | Generate core proof for live default input | Local |
+| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16` | Prover network EVM proof for live default input (recommended) | Network key + PROVE tokens |
 | `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...` | Generate proof for a specific included transaction | Network key + PROVE tokens |
+| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-past-end` | Generate live absence proof at the first index past the selected block's transaction count | Network key + PROVE tokens |
 | `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-block-number N --absence-transaction-index I` | Generate proof that no transaction exists at index `I` in block `N` | Network key + PROVE tokens |
-| `cargo run --release --bin evm -- --system groth16` | Local EVM proofs | Local prover resources |
+| `cargo run --release --bin evm -- --system groth16` | Local EVM proof for live default input | Local prover resources |
 | `./scripts/run_generated_fixture_e2e.sh groth16` | Generate a fresh fixture and verify it through Foundry | RPC access + prover resources |
 | `cargo run --release --bin vkey` | Get verification key | Local |
 
@@ -187,7 +188,8 @@ Required environment secrets:
 - `ETH_RPC_URL`
 
 Optional environment or repository variable:
-- `INCLUDED_TX` to override the default hardcoded transaction used for proof generation
+- `INCLUDED_TX` to generate the network E2E fixture for a specific included transaction.
+  If omitted, the script uses the live default: the first transaction in block `finalized - 2`.
 
 ### Utility Scripts
 
@@ -360,12 +362,33 @@ currently 1 day.
 
 ## Configuration
 
-### Transaction Configuration
+### Transaction Selection
 
-To verify different transactions, update `INCLUDED_TX` in `lib/src/lib.rs`:
+Proof-generation commands support two input modes:
 
-```rust
-pub const INCLUDED_TX: &str = "0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436";
+1. **Live default**: if no transaction hash or absence block/index is provided, the script fetches the chain's finalized block, selects block `finalized - 2`, and uses the first transaction in that block.
+2. **User-provided transaction**: if `--transaction-hash 0x...` is provided, the script fetches that transaction and proves inclusion against the block number and transaction index reported by the RPC for that mined transaction.
+
+Examples:
+
+```sh
+# Live inclusion proof input: finalized - 2, transaction index 0
+cargo run --release -- --execute
+
+# Specific included transaction: block/index are read from the transaction metadata
+cargo run --release -- --execute --transaction-hash 0x...
+
+# Live EVM fixture: finalized - 2, transaction index 0
+SP1_PROVER=network cargo run --release --bin evm -- --system groth16
+
+# Specific included transaction EVM fixture
+SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...
+
+# Live absence proof: finalized - 2, first index past the block's transaction count
+SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-past-end
+
+# Specific absence proof
+SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-block-number N --absence-transaction-index I
 ```
 
 ### Network Configuration
@@ -409,11 +432,14 @@ SP1_PROVER=network cargo run --release --bin evm -- --eth-rpc-url https://your-r
 
 ### Direct Proof Generation
 
+By default, direct proof generation uses the live input mode: block `finalized - 2`, transaction index `0`.
+When a transaction hash is provided, the script resolves the transaction's mined block and index from RPC and proves against those values.
+
 Successful proof generation will show:
 
 ```
 ✅ Network private key found in environment
-Transaction found in block: 23354683, index: 87
+Selected first transaction from block 23354683 (finalized block 23354685 - 2, 94 transactions)
 🎉 SUCCESS: Trie root MATCHES block transactions root!
 ✅ Host validation successful - merkle proof is valid!
 

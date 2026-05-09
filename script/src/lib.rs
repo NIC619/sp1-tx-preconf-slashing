@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use sp1_sdk::{HashableKey, SP1ProofWithPublicValues, SP1VerifyingKey};
 use std::path::{Path, PathBuf};
 
+use alloy::eips::BlockNumberOrTag;
+use alloy::providers::Provider;
+use alloy_rpc_types::{BlockId, BlockTransactions};
 use alloy_sol_types::SolType;
 
 alloy_sol_types::sol! {
@@ -75,6 +78,61 @@ pub fn default_fixture_output_path(system_name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../contracts/src/fixtures")
         .join(format!("{system_name}-fixture.json"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentFirstTransaction {
+    pub finalized_block_number: u64,
+    pub block_number: u64,
+    pub transaction_index: u64,
+    pub transaction_count: usize,
+}
+
+pub const RECENT_FINALIZED_OFFSET: u64 = 2;
+
+pub async fn select_first_transaction_from_recent_finalized_block(
+    provider: &impl Provider,
+) -> Result<RecentFirstTransaction> {
+    let finalized_block = provider
+        .get_block(BlockId::Number(BlockNumberOrTag::Finalized))
+        .await?
+        .ok_or_else(|| eyre::eyre!("Finalized block not found"))?;
+    let finalized_block_number = finalized_block.header.number;
+    let block_number = finalized_block_number
+        .checked_sub(RECENT_FINALIZED_OFFSET)
+        .ok_or_else(|| {
+            eyre::eyre!(
+                "Finalized block {} is below requested offset {}",
+                finalized_block_number,
+                RECENT_FINALIZED_OFFSET
+            )
+        })?;
+
+    let block = provider
+        .get_block(BlockId::Number(block_number.into()))
+        .full()
+        .await?
+        .ok_or_else(|| eyre::eyre!("Block not found: {}", block_number))?;
+
+    let transaction_count = match &block.transactions {
+        BlockTransactions::Full(txs) => txs.len(),
+        BlockTransactions::Hashes(txs) => txs.len(),
+        _ => return Err(eyre::eyre!("Unexpected transaction format")),
+    };
+
+    if transaction_count == 0 {
+        return Err(eyre::eyre!(
+            "Selected block {} has no transactions; cannot use first transaction",
+            block_number
+        ));
+    }
+
+    Ok(RecentFirstTransaction {
+        finalized_block_number,
+        block_number,
+        transaction_index: 0,
+        transaction_count,
+    })
 }
 
 #[cfg(test)]

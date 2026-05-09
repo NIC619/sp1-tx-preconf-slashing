@@ -136,10 +136,10 @@ let client = ProverClient::builder()
 
 ### Basic Usage
 
-The unified `evm` binary supports dynamic transaction hash specification. Use `SP1_PROVER=network` for Succinct Network requests:
+The unified `evm` binary supports live default inputs and dynamic transaction hash specification. Use `SP1_PROVER=network` for Succinct Network requests:
 
 ```bash
-# Use default hardcoded transaction
+# Live default: finalized - 2, first transaction in the block
 SP1_PROVER=network cargo run --release --bin evm -- --system groth16
 
 # Use custom transaction hash
@@ -152,6 +152,11 @@ SP1_PROVER=network cargo run --release --bin evm -- \
   --system groth16 \
   --eth-rpc-url https://your-custom-rpc.com \
   --transaction-hash 0xabcd1234...
+
+# Live absence proof: finalized - 2, first index past the block's transaction count
+SP1_PROVER=network cargo run --release --bin evm -- \
+  --system groth16 \
+  --absence-past-end
 ```
 
 ### Available Arguments
@@ -160,17 +165,16 @@ SP1_PROVER=network cargo run --release --bin evm -- \
 |----------|-------------|---------|
 | `--system` | Proof system (groth16 or plonk) | groth16 |
 | `--eth-rpc-url` | Ethereum RPC endpoint | https://ethereum-rpc.publicnode.com |
-| `--transaction-hash` | Specific transaction to prove | Uses hardcoded INCLUDED_TX |
+| `--transaction-hash` | Specific transaction to prove. The script fetches its mined block number and transaction index from RPC. | Live default: `finalized - 2`, index `0` |
+| `--absence-past-end` | Prove no transaction exists at the first index past the selected live block's transaction count. | false |
 
-### Environment Variable Support
+### Custom Transaction Selection
 
-You can also set the transaction hash via environment variable:
+Backend services should pass custom transactions via `--transaction-hash`:
 
 ```bash
-SP1_PROVER=network INCLUDED_TX=0xabcd1234... cargo run --release --bin evm -- --system groth16
+SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0xabcd1234...
 ```
-
-**Priority order**: `--transaction-hash` > `INCLUDED_TX` env var > hardcoded default
 
 ### Integration with Backend Services
 

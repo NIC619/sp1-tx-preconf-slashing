@@ -21,11 +21,13 @@ use clap::{Parser, ValueEnum};
 use eyre::Result;
 use sp1_sdk::{include_elf, Elf, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin};
 use tx_inclusion_precise_index::{
-    default_fixture_output_path, fixture_from_proof, write_fixture_file,
+    default_fixture_output_path, fixture_from_proof,
+    select_first_transaction_from_recent_finalized_block, write_fixture_file,
+    RECENT_FINALIZED_OFFSET,
 };
 use tx_inclusion_precise_index_lib::{
     encode_transaction_for_trie, generate_merkle_absence_proof, generate_merkle_proof,
-    generate_sender_account_witness, TransactionInclusionInput, INCLUDED_TX,
+    generate_sender_account_witness, TransactionInclusionInput,
 };
 use url::Url;
 
@@ -44,7 +46,7 @@ struct EVMArgs {
     output_path: Option<std::path::PathBuf>,
     #[arg(
         long,
-        help = "Transaction hash to generate proof for (overrides default)"
+        help = "Transaction hash to prove; omitted means first transaction from finalized - 2"
     )]
     transaction_hash: Option<String>,
     #[arg(
@@ -57,6 +59,11 @@ struct EVMArgs {
         help = "Transaction index for a no-transaction-at-index absence proof"
     )]
     absence_transaction_index: Option<u64>,
+    #[arg(
+        long,
+        help = "Generate an absence proof for the first index past the selected block's transaction count"
+    )]
+    absence_past_end: bool,
 }
 
 /// Enum representing the available proof systems
@@ -90,18 +97,51 @@ async fn main() -> Result<()> {
     println!("Proof System: {:?}", args.system);
     println!("SP1 prover mode: {}", prover_mode);
 
-    let input = if args.absence_block_number.is_some() || args.absence_transaction_index.is_some() {
+    let input = if args.absence_block_number.is_some()
+        || args.absence_transaction_index.is_some()
+        || args.absence_past_end
+    {
+        let recent_selection = if args.absence_past_end
+            && args.absence_block_number.is_none()
+            && args.absence_transaction_index.is_none()
+        {
+            Some(select_first_transaction_from_recent_finalized_block(&provider).await?)
+        } else {
+            None
+        };
+
         let block_number = args
             .absence_block_number
+            .or_else(|| {
+                recent_selection
+                    .as_ref()
+                    .map(|selection| selection.block_number)
+            })
             .ok_or_else(|| eyre::eyre!("--absence-block-number is required for absence proofs"))?;
-        let tx_index = args.absence_transaction_index.ok_or_else(|| {
-            eyre::eyre!("--absence-transaction-index is required for absence proofs")
-        })?;
+        let tx_index = args
+            .absence_transaction_index
+            .or_else(|| {
+                recent_selection
+                    .as_ref()
+                    .map(|selection| selection.transaction_count as u64)
+            })
+            .ok_or_else(|| {
+                eyre::eyre!("--absence-transaction-index is required for absence proofs")
+            })?;
 
         println!(
             "Generating no-transaction-at-index proof for block {}, index {}",
             block_number, tx_index
         );
+        if let Some(selection) = &recent_selection {
+            println!(
+                "Selected absence target from block {} (finalized block {} - {}, {} transactions)",
+                selection.block_number,
+                selection.finalized_block_number,
+                RECENT_FINALIZED_OFFSET,
+                selection.transaction_count
+            );
+        }
 
         let block = provider
             .get_block(BlockId::Number(block_number.into()))
@@ -109,20 +149,17 @@ async fn main() -> Result<()> {
             .ok_or_else(|| eyre::eyre!("Block not found"))?;
 
         let merkle_proof = generate_merkle_absence_proof(&provider, block_number, tx_index).await?;
-        let committed_transaction_hash = args
-            .transaction_hash
-            .or_else(|| {
-                std::env::var("INCLUDED_TX")
-                    .ok()
-                    .map(|tx| tx.trim().to_string())
-                    .filter(|tx| !tx.is_empty())
-            })
-            .unwrap_or_else(|| INCLUDED_TX.to_string());
-        let committed_tx = provider
-            .get_transaction_by_hash(committed_transaction_hash.parse()?)
-            .await?
-            .ok_or_else(|| eyre::eyre!("Committed transaction not found"))?;
-        let committed_raw_transaction = encode_transaction_for_trie(&committed_tx)?;
+        let committed_raw_transaction = if let Some(transaction_hash) = args.transaction_hash {
+            let committed_tx = provider
+                .get_transaction_by_hash(transaction_hash.parse()?)
+                .await?
+                .ok_or_else(|| eyre::eyre!("Committed transaction not found"))?;
+            encode_transaction_for_trie(&committed_tx)?
+        } else {
+            let (_committed_merkle_proof, encoded_tx_bytes) =
+                generate_merkle_proof(&provider, block_number, 0).await?;
+            encoded_tx_bytes
+        };
         let sender_witness =
             generate_sender_account_witness(&provider, block_number, &committed_raw_transaction)
                 .await?;
@@ -139,33 +176,37 @@ async fn main() -> Result<()> {
             prove_absence: true,
         }
     } else {
-        let transaction_hash = args
-            .transaction_hash
-            .or_else(|| {
-                std::env::var("INCLUDED_TX")
-                    .ok()
-                    .map(|tx| tx.trim().to_string())
-                    .filter(|tx| !tx.is_empty())
-            })
-            .unwrap_or_else(|| INCLUDED_TX.to_string());
+        let (block_number, tx_index) = if let Some(transaction_hash) = args.transaction_hash {
+            // Get the transaction details
+            let tx = provider
+                .get_transaction_by_hash(transaction_hash.parse()?)
+                .await?
+                .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
 
-        // Get the transaction details
-        let tx = provider
-            .get_transaction_by_hash(transaction_hash.parse()?)
-            .await?
-            .ok_or_else(|| eyre::eyre!("Transaction not found"))?;
+            let block_number = tx
+                .block_number
+                .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
+            let tx_index = tx
+                .transaction_index
+                .ok_or_else(|| eyre::eyre!("Transaction index not found"))?
+                as u64;
 
-        let block_number = tx
-            .block_number
-            .ok_or_else(|| eyre::eyre!("Transaction not mined"))?;
-        let tx_index =
-            tx.transaction_index
-                .ok_or_else(|| eyre::eyre!("Transaction index not found"))? as u64;
-
-        println!(
-            "Transaction found in block: {}, index: {}",
-            block_number, tx_index
-        );
+            println!(
+                "Transaction found in block: {}, index: {}",
+                block_number, tx_index
+            );
+            (block_number, tx_index)
+        } else {
+            let selection = select_first_transaction_from_recent_finalized_block(&provider).await?;
+            println!(
+                "Selected first transaction from block {} (finalized block {} - {}, {} transactions)",
+                selection.block_number,
+                selection.finalized_block_number,
+                RECENT_FINALIZED_OFFSET,
+                selection.transaction_count
+            );
+            (selection.block_number, selection.transaction_index)
+        };
 
         // Get the block with all transactions
         let block = provider
@@ -246,7 +287,10 @@ fn create_proof_fixture(
     println!("Verification Key: {}", fixture.vkey);
     println!("Block Hash: {}", fixture.block_hash);
     println!("Block Number: {}", fixture.block_number);
-    println!("Committed Transaction Hash: {}", fixture.committed_transaction_hash);
+    println!(
+        "Committed Transaction Hash: {}",
+        fixture.committed_transaction_hash
+    );
     println!("Transaction Hash: {}", fixture.transaction_hash);
     println!("Transaction Index: {}", fixture.transaction_index);
     println!("Is Included: {}", fixture.is_included);
