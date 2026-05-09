@@ -22,7 +22,7 @@ use eyre::Result;
 use sp1_sdk::{include_elf, Elf, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin};
 use tx_inclusion_precise_index::{
     default_fixture_output_path, fixture_from_proof,
-    select_first_transaction_from_recent_finalized_block, write_fixture_file,
+    load_repo_dotenv, select_first_transaction_from_recent_finalized_block, write_fixture_file,
     RECENT_FINALIZED_OFFSET,
 };
 use tx_inclusion_precise_index_lib::{
@@ -75,7 +75,7 @@ enum ProofSystem {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv::dotenv().ok();
+    load_repo_dotenv();
     sp1_sdk::utils::setup_logger();
 
     // Parse the command line arguments.

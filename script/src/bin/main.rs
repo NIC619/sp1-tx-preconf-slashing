@@ -5,7 +5,7 @@ use clap::Parser;
 use eyre::Result;
 use sp1_sdk::{include_elf, utils, Elf, Prover, ProverClient, ProvingKey, SP1Stdin};
 use tx_inclusion_precise_index::{
-    decode_public_values, select_first_transaction_from_recent_finalized_block,
+    decode_public_values, load_repo_dotenv, select_first_transaction_from_recent_finalized_block,
     RECENT_FINALIZED_OFFSET,
 };
 use tx_inclusion_precise_index_lib::{
@@ -37,7 +37,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv::dotenv().ok();
+    load_repo_dotenv();
     utils::setup_logger();
 
     let args = Args::parse();

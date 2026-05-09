@@ -80,6 +80,11 @@ pub fn default_fixture_output_path(system_name: &str) -> PathBuf {
         .join(format!("{system_name}-fixture.json"))
 }
 
+pub fn load_repo_dotenv() {
+    dotenv::from_path(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.env")).ok();
+    dotenv::dotenv().ok();
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecentFirstTransaction {
     pub finalized_block_number: u64,
