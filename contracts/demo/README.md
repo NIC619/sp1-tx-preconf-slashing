@@ -50,13 +50,21 @@ The application will be available at `http://localhost:3000`
 
 ### Configuration
 
-Update contract addresses in `src/contracts.js`:
+The deployment script updates contract addresses in `src/contracts.js` and this README after successful deployments:
+
+```bash
+cd ..
+./deploy-and-verify.sh verifier sepolia
+./deploy-and-verify.sh slasher sepolia
+```
+
+The resulting Sepolia configuration is:
 
 ```javascript
 export const CONTRACTS = {
   SEPOLIA: {
-    SLASHER: '0x7a4a1f03816e411dCE396a18d146677042831819',
-    VERIFIER: '0x5493090647159c35579AE984032D612166C6357F',
+    SLASHER: '0xc64E87577AC79EA47CBd372784D48C904bc07ad6',
+    VERIFIER: '0x7e6f831D387Ba9141513711b914bcFC306e853b8',
   },
   MAINNET: {
     SLASHER: '', // Deploy when ready
@@ -92,7 +100,24 @@ export const CONTRACTS = {
 
 4. **Slash Proposer** (if violation detected):
    - Evidence of broken commitment is displayed
-   - Slashing mechanism integration (requires ZK proof generation)
+   - Generate a ZK proof
+   - Ask the contract owner to register the canonical block metadata
+   - Execute the slashing transaction
+
+### Register Canonical Block Metadata
+
+The slasher requires the owner to register the canonical block hash and timestamp for the committed block before a slash
+can succeed:
+
+```bash
+cd ../
+BLOCK_NUMBER=23354683 \
+BLOCK_HASH=0x... \
+BLOCK_TIMESTAMP=1757890000 \
+forge script script/RegisterCanonicalBlock.s.sol:RegisterCanonicalBlock \
+  --rpc-url sepolia \
+  --broadcast
+```
 
 ## Technical Details
 

@@ -2,18 +2,15 @@
 pragma solidity ^0.8.20;
 
 import {Script, console} from "forge-std/Script.sol";
+import {DeploymentEnvReader} from "./DeploymentEnvReader.sol";
 import {TxInclusionPreciseSlasher} from "../src/TxInclusionPreciseSlasher.sol";
 
-contract DeployTxInclusionPreciseSlasher is Script {
+contract DeployTxInclusionPreciseSlasher is DeploymentEnvReader {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         uint256 withdrawalDelay = 100 seconds;
 
-        // Read verifier address from deployment.env
-        string memory deploymentEnv = vm.readFile("deployment.env");
-        
-        // For now, we'll use the hardcoded address, but this could be parsed from the file
-        address inclusionVerifier = 0x5493090647159c35579AE984032D612166C6357F;
+        address inclusionVerifier = _readDeploymentAddress("TRANSACTION_INCLUSION_VERIFIER");
 
         vm.startBroadcast(deployerPrivateKey);
 

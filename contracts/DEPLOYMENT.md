@@ -99,7 +99,8 @@ forge script script/DeployTxInclusionPreciseSlasher.s.sol:DeployTxInclusionPreci
 
 ## After Deployment
 
-The deployment will create/update a `deployment.env` file with the contract details:
+The deployment will create/update a `deployment.env` file with the contract details. Successful deploys also update
+`demo/src/contracts.js` and `demo/README.md` with the latest address for the selected network.
 
 ```bash
 # TransactionInclusionVerifier deployment info
@@ -159,6 +160,20 @@ slasher.completeWithdrawal();
 slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
 ```
 
+### Register Canonical Block Metadata
+
+Before a slash can succeed, the owner must register the canonical block hash and timestamp for the committed block.
+`RegisterCanonicalBlock.s.sol` reads `TX_INCLUSION_PRECISE_SLASHER` from `deployment.env`.
+
+```bash
+BLOCK_NUMBER=23354683 \
+BLOCK_HASH=0x... \
+BLOCK_TIMESTAMP=1757890000 \
+forge script script/RegisterCanonicalBlock.s.sol:RegisterCanonicalBlock \
+  --rpc-url sepolia \
+  --broadcast
+```
+
 ## Troubleshooting
 
 ### General Issues
@@ -174,7 +189,8 @@ slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
 ### Slasher Deployment Issues
 7. **Missing Verifier**: Ensure TransactionInclusionVerifier is deployed first
 8. **deployment.env**: Check that `TRANSACTION_INCLUSION_VERIFIER` exists in deployment.env
-9. **Hardcoded Address**: If needed, update the hardcoded verifier address in the deployment script
+9. **Demo Addresses Stale**: Re-run `./deploy-and-verify.sh verifier sepolia` or `./deploy-and-verify.sh slasher sepolia`
+   to refresh `demo/src/contracts.js` and `demo/README.md`
 
 ### Script Usage
 ```bash

@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {stdJson} from "forge-std/StdJson.sol";
+import {DeploymentEnvReader} from "./DeploymentEnvReader.sol";
 import {PublicValuesStruct, TransactionInclusionVerifier} from "../src/TransactionInclusionVerifier.sol";
 
 // @dev Name of struct params need to follow alphabetic order for abi.decode
@@ -20,10 +21,8 @@ struct SP1ProofFixtureJson {
     bytes32 vkey;
 }
 
-contract VerifyProofOnchain is Script {
+contract VerifyProofOnchain is DeploymentEnvReader {
     using stdJson for string;
-
-    address constant DEPLOYED_VERIFIER = 0x5493090647159c35579AE984032D612166C6357F;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
@@ -37,9 +36,10 @@ contract VerifyProofOnchain is Script {
     function run() external {
         // Load the proof fixture
         SP1ProofFixtureJson memory fixture = loadFixture();
+        address deployedVerifier = _readDeploymentAddress("TRANSACTION_INCLUSION_VERIFIER");
 
         console2.log("=== VERIFYING TRANSACTION INCLUSION PROOF ON-CHAIN ===");
-        console2.log("Deployed Verifier Contract:", DEPLOYED_VERIFIER);
+        console2.log("Deployed Verifier Contract:", deployedVerifier);
         console2.log("Network: Sepolia");
         console2.log("");
         
@@ -61,7 +61,7 @@ contract VerifyProofOnchain is Script {
         vm.startBroadcast();
 
         // Create contract instance
-        TransactionInclusionVerifier verifier = TransactionInclusionVerifier(DEPLOYED_VERIFIER);
+        TransactionInclusionVerifier verifier = TransactionInclusionVerifier(deployedVerifier);
 
         console2.log("Calling verifyTransactionInclusion...");
         
@@ -124,14 +124,15 @@ contract VerifyProofOnchain is Script {
     function runView() external view {
         // Load the proof fixture
         SP1ProofFixtureJson memory fixture = loadFixture();
+        address deployedVerifier = _readDeploymentAddress("TRANSACTION_INCLUSION_VERIFIER");
 
         console2.log("=== TESTING TRANSACTION INCLUSION PROOF (VIEW ONLY) ===");
-        console2.log("Deployed Verifier Contract:", DEPLOYED_VERIFIER);
+        console2.log("Deployed Verifier Contract:", deployedVerifier);
         console2.log("Network: Sepolia");
         console2.log("");
 
         // Create contract instance
-        TransactionInclusionVerifier verifier = TransactionInclusionVerifier(DEPLOYED_VERIFIER);
+        TransactionInclusionVerifier verifier = TransactionInclusionVerifier(deployedVerifier);
 
         console2.log("Calling verifyTransactionInclusionView...");
 
@@ -169,10 +170,12 @@ contract VerifyProofOnchain is Script {
 
     // Helper function to check contract state
     function checkContract() external view {
+        address deployedVerifier = _readDeploymentAddress("TRANSACTION_INCLUSION_VERIFIER");
+
         console2.log("=== CONTRACT STATE CHECK ===");
-        console2.log("Verifier Contract:", DEPLOYED_VERIFIER);
+        console2.log("Verifier Contract:", deployedVerifier);
         
-        TransactionInclusionVerifier verifier = TransactionInclusionVerifier(DEPLOYED_VERIFIER);
+        TransactionInclusionVerifier verifier = TransactionInclusionVerifier(deployedVerifier);
         
         console2.log("SP1 Verifier Gateway:", verifier.verifier());
         console2.log("Program VKey:", vm.toString(verifier.txInclusionProgramVKey()));
@@ -186,4 +189,5 @@ contract VerifyProofOnchain is Script {
             console2.log("X VKey mismatch!");
         }
     }
+
 }

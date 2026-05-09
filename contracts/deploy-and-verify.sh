@@ -11,6 +11,75 @@ set -e
 CONTRACT=${1:-verifier}
 NETWORK=${2:-sepolia}
 
+deployment_explorer_host() {
+    if [ "$NETWORK" = "mainnet" ]; then
+        echo "etherscan.io"
+    else
+        echo "${NETWORK}.etherscan.io"
+    fi
+}
+
+network_key() {
+    echo "$NETWORK" | tr '[:lower:]' '[:upper:]'
+}
+
+source_deployment_env() {
+    if [ -f "deployment.env" ]; then
+        set -a
+        source deployment.env
+        set +a
+    fi
+}
+
+append_slasher_deployment() {
+    if [ ! -f "slasher-deployment.tmp" ]; then
+        return
+    fi
+
+    if [ -f "deployment.env" ]; then
+        grep -v -E '^(# TxInclusionPreciseSlasher deployment info|TX_INCLUSION_PRECISE_SLASHER=|WITHDRAWAL_DELAY=|SLASH_AMOUNT=|MIN_BOND_AMOUNT=)' \
+            deployment.env > deployment.env.tmp || true
+        mv deployment.env.tmp deployment.env
+    fi
+
+    {
+        echo ""
+        echo "# TxInclusionPreciseSlasher deployment info"
+        cat slasher-deployment.tmp
+    } >> deployment.env
+    rm slasher-deployment.tmp
+}
+
+update_demo_files() {
+    source_deployment_env
+
+    local demo_network
+    demo_network=$(network_key)
+    local contracts_file="demo/src/contracts.js"
+    local demo_readme="demo/README.md"
+
+    if [ ! -f "$contracts_file" ]; then
+        echo "Skipping demo address update: $contracts_file not found"
+        return
+    fi
+
+    DEMO_NETWORK_KEY="$demo_network" \
+    DEMO_SLASHER="${TX_INCLUSION_PRECISE_SLASHER:-}" \
+    DEMO_VERIFIER="${TRANSACTION_INCLUSION_VERIFIER:-}" \
+    perl -0pi -e 'my $n=$ENV{"DEMO_NETWORK_KEY"}; my $s=$ENV{"DEMO_SLASHER"}; my $v=$ENV{"DEMO_VERIFIER"}; s/($n:\s*\{[^}]*?SLASHER:\s*)\x27[^\x27]*\x27/${1}\x27$s\x27/s if $s; s/($n:\s*\{[^}]*?VERIFIER:\s*)\x27[^\x27]*\x27/${1}\x27$v\x27/s if $v;' \
+        "$contracts_file"
+
+    if [ -f "$demo_readme" ]; then
+        DEMO_NETWORK_KEY="$demo_network" \
+        DEMO_SLASHER="${TX_INCLUSION_PRECISE_SLASHER:-}" \
+        DEMO_VERIFIER="${TRANSACTION_INCLUSION_VERIFIER:-}" \
+        perl -0pi -e 'my $n=$ENV{"DEMO_NETWORK_KEY"}; my $s=$ENV{"DEMO_SLASHER"}; my $v=$ENV{"DEMO_VERIFIER"}; s/($n:\s*\{[^}]*?SLASHER:\s*)\x27[^\x27]*\x27/${1}\x27$s\x27/s if $s; s/($n:\s*\{[^}]*?VERIFIER:\s*)\x27[^\x27]*\x27/${1}\x27$v\x27/s if $v;' \
+            "$demo_readme"
+    fi
+
+    echo "Updated demo contract addresses for $demo_network"
+}
+
 case $CONTRACT in
     verifier)
         CONTRACT_NAME="TransactionInclusionVerifier"
@@ -130,9 +199,11 @@ if [ $? -eq 0 ]; then
     
     # Source the deployment info
     if [ -f "deployment.env" ]; then
-        source deployment.env
+        source_deployment_env
         
         if [ "$CONTRACT" = "verifier" ]; then
+            update_demo_files
+
             echo "Contract deployed at: $TRANSACTION_INCLUSION_VERIFIER"
             
             echo ""
@@ -146,19 +217,12 @@ if [ $? -eq 0 ]; then
             echo "SP1 Verifier: $SP1_VERIFIER"
             echo "Program VKey: $PROGRAM_VKEY"
             echo "Network: $NETWORK"
-            echo "Etherscan: https://${NETWORK}.etherscan.io/address/$TRANSACTION_INCLUSION_VERIFIER"
+            echo "Etherscan: https://$(deployment_explorer_host)/address/$TRANSACTION_INCLUSION_VERIFIER"
             
         elif [ "$CONTRACT" = "slasher" ]; then
-            # Append slasher info to deployment.env
-            if [ -f "slasher-deployment.tmp" ]; then
-                echo "" >> deployment.env
-                echo "# TxInclusionPreciseSlasher deployment info" >> deployment.env
-                cat slasher-deployment.tmp >> deployment.env
-                rm slasher-deployment.tmp
-                
-                # Re-source to get the new values
-                source deployment.env
-            fi
+            append_slasher_deployment
+            source_deployment_env
+            update_demo_files
             
             echo "Contract deployed at: $TX_INCLUSION_PRECISE_SLASHER"
             
@@ -174,7 +238,7 @@ if [ $? -eq 0 ]; then
             echo "Slash Amount: $SLASH_AMOUNT wei"
             echo "Min Bond Amount: $MIN_BOND_AMOUNT wei"
             echo "Network: $NETWORK"
-            echo "Etherscan: https://${NETWORK}.etherscan.io/address/$TX_INCLUSION_PRECISE_SLASHER"
+            echo "Etherscan: https://$(deployment_explorer_host)/address/$TX_INCLUSION_PRECISE_SLASHER"
         fi
         
     else

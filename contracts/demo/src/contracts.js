@@ -1,8 +1,8 @@
 // Contract addresses - update these with your deployed contracts
 export const CONTRACTS = {
   SEPOLIA: {
-    SLASHER: '0x7a4a1f03816e411dCE396a18d146677042831819',
-    VERIFIER: '0x5493090647159c35579AE984032D612166C6357F',
+    SLASHER: '0xc64E87577AC79EA47CBd372784D48C904bc07ad6',
+    VERIFIER: '0x7e6f831D387Ba9141513711b914bcFC306e853b8',
   },
   // Add mainnet addresses when deployed
   MAINNET: {
