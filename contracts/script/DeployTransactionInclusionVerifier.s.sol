@@ -9,7 +9,7 @@ contract DeployTransactionInclusionVerifier is Script {
         // Load environment variables (Foundry automatically loads from .env)
         address verifierAddress = vm.envAddress("SP1_VERIFIER_ADDRESS");
         bytes32 vkey = vm.envBytes32("TX_INCLUSION_PROGRAM_VKEY");
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         uint256 ownerPrivateKey = vm.envUint("OWNER_PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address owner = vm.addr(ownerPrivateKey);

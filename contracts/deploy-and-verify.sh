@@ -123,8 +123,8 @@ fi
 echo ""
 
 # Check required environment variables
-if [ -z "$PRIVATE_KEY" ]; then
-    echo "Error: PRIVATE_KEY environment variable is required"
+if [ -z "$DEPLOYER_PRIVATE_KEY" ]; then
+    echo "Error: DEPLOYER_PRIVATE_KEY environment variable is required"
     exit 1
 fi
 

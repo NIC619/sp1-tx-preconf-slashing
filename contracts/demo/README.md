@@ -1,223 +1,148 @@
 # TxInclusionPreciseSlasher Demo
 
-A React-based web application demonstrating the complete flow of the TxInclusionPreciseSlasher system, including preconfirmation requests, EIP-712 signature verification, and slashing for commitment violations.
+React UI and Node backend for exercising the transaction-inclusion slashing demo.
 
-## Features
+The demo flow is:
 
-### Proposer Tab
-- **Bond Management**: Add bonds (minimum 0.1 ETH) to the slasher contract
-- **Withdrawal System**: Initiate and complete bond withdrawals with time delays
-- **Real-time Status**: View current bond amounts, pending withdrawals, and contract parameters
-- **MetaMask Integration**: Direct interaction with deployed slasher contracts
-
-### User Tab
-1. **Request Preconfirmation**: Create structured commitment requests with EIP-712 signatures
-2. **Verify Commitments**: Validate the authenticity of proposer signatures
-3. **Check Inclusion**: Query the connected network to verify transaction inclusion at promised positions
-4. **Slash Detection**: Identify commitment violations and prepare for slashing
-
-## Architecture
-
-### Networks
-- **Proposer Operations**: Executed on the network where slasher contract is deployed (Sepolia for testing)
-- **Commitment Verification**: References transactions on the connected wallet network
-- **Block Queries**: Uses the connected wallet network for transaction inclusion verification
-
-### Key Components
-- **Wallet Integration**: MetaMask connection with network switching
-- **EIP-712 Signing**: Structured data signing for secure commitments  
-- **Smart Contract Integration**: Direct interaction with deployed slasher contracts
-- **Ethereum RPC**: Real-time blockchain data queries
+1. Backend proposer signs an exact-position commitment with `PROPOSER_PRIVATE_KEY`.
+2. User verifies the EIP-712 signature in the browser.
+3. User checks the connected network for the promised transaction position.
+4. User generates an SP1 proof through the backend.
+5. Backend registers canonical block metadata with `OWNER_PRIVATE_KEY`.
+6. User submits the slashing transaction from MetaMask.
 
 ## Setup
 
-### Prerequisites
-- Node.js 16+
-- MetaMask browser extension
-- Access to Sepolia testnet ETH (for testing)
-- `PROPOSER_PRIVATE_KEY` in the repository root `.env` for backend proposer signing and bond operations
-- `OWNER_PRIVATE_KEY` in the repository root `.env` for backend canonical block registration before slashing
+Create a root `.env` at the repository root:
 
-### Installation
-
-```bash
-# Install frontend dependencies
-npm install
-
-# Start development server
-npm start
+```env
+SP1_PROVER=network
+NETWORK_PRIVATE_KEY=0x...
+PROPOSER_PRIVATE_KEY=0x...
+OWNER_PRIVATE_KEY=0x...
 ```
 
-The application will be available at `http://localhost:3000`
+Build the Rust proof binary used by the backend:
 
-Start the backend in a separate terminal:
+```sh
+cd ../..
+cargo build --release --bin evm
+```
 
-```bash
+Install frontend dependencies:
+
+```sh
+cd contracts/demo
+npm install
+```
+
+Install backend dependencies:
+
+```sh
 cd backend
 npm install
+```
+
+## Run
+
+Terminal 1:
+
+```sh
+cd contracts/demo/backend
 npm start
 ```
 
-The backend reads `PROPOSER_PRIVATE_KEY`, `OWNER_PRIVATE_KEY`, and `NETWORK_PRIVATE_KEY` from the repository root `.env` file.
+Terminal 2:
 
-### Configuration
-
-The deployment script updates contract addresses in `src/contracts.js` and this README after successful deployments:
-
-```bash
-cd ..
-./deploy-and-verify.sh verifier sepolia
-./deploy-and-verify.sh slasher sepolia
+```sh
+cd contracts/demo
+npm start
 ```
 
-The resulting Sepolia configuration is:
+Open `http://localhost:3000`.
 
-```javascript
+## UI Tabs
+
+### Proposer
+
+The Proposer tab shows the backend proposer address and balance, then lets that configured proposer:
+
+- add bond
+- initiate withdrawal
+- complete withdrawal
+- view current bond and withdrawal state
+
+The connected wallet is not used as the proposer.
+
+### User
+
+The User tab uses the connected wallet as the user/slasher.
+
+It loads a recent finalized block from the connected network and offers three commitment cases:
+
+- **Fulfilled commitment**: the promise matches the block.
+- **Different transaction at promised position**: the block contains a different transaction at that position.
+- **No transaction at promised position**: the promised position is past the end of the block.
+
+After requesting a proposer commitment, the verification form is auto-filled, but it remains editable for manual testing.
+
+## Contract Addresses
+
+`src/contracts.js` contains the current demo addresses. `../deploy-and-verify.sh` updates this file after successful deployments.
+
+Current Sepolia configuration:
+
+```js
 export const CONTRACTS = {
   SEPOLIA: {
     SLASHER: '0x047c9fBa113c14e3F7F987C9D8F29dd3C0160796',
     VERIFIER: '0xCa1BA4D2630cC7aCa1F7ef463498a83151A56166',
   },
   MAINNET: {
-    SLASHER: '', // Deploy when ready
-    VERIFIER: '', // Deploy when ready
+    SLASHER: '',
+    VERIFIER: '',
   }
 };
 ```
 
-## Usage Flow
+## Backend
 
-### For Proposers
+The backend exposes:
 
-1. **Connect Wallet**: Connect MetaMask and switch to Sepolia network
-2. **Add Bond**: Deposit minimum 0.1 ETH to participate in preconfirmations
-3. **Monitor Status**: Track bond amounts and withdrawal timeframes
-4. **Withdraw Funds**: Initiate withdrawal with 1-day delay, then complete
+- proposer status and bond transactions
+- proposer EIP-712 commitment signing
+- real-time proof generation via `target/release/evm`
+- owner canonical block registration before slashing
 
-### For Users
+It reads environment variables from the repository root `.env`.
 
-1. **Request Preconfirmation**: 
-   - Load a recent finalized block from the connected network
-   - Choose whether the proposer should sign a fulfilled commitment, a different-transaction violation, or a no-transaction-at-position violation
-   - Request an EIP-712 signature from the backend proposer configured with `PROPOSER_PRIVATE_KEY`
+## Exact-Position Semantics
 
-2. **Verify Commitment**:
-   - Paste commitment JSON and signature
-   - Verify proposer's signature authenticity
-   - Validate commitment parameters
+The signed commitment means:
 
-3. **Check Inclusion**:
-   - Query the connected network for actual transaction at specified position
-   - Compare with promised transaction hash
-   - Detect commitment violations
-
-4. **Slash Proposer** (if violation detected):
-   - Evidence of broken commitment is displayed
-   - Generate a ZK proof
-   - The backend registers the canonical block metadata with `OWNER_PRIVATE_KEY`
-   - Execute the slashing transaction
-
-### Register Canonical Block Metadata
-
-The slasher requires the owner to register the canonical block hash and timestamp for the committed block before a slash
-can succeed. The demo UI now does this automatically before submitting the slashing transaction. To run it manually:
-
-```bash
-cd ../
-BLOCK_NUMBER=23354683 \
-BLOCK_HASH=0x... \
-BLOCK_TIMESTAMP=1757890000 \
-forge script script/RegisterCanonicalBlock.s.sol:RegisterCanonicalBlock \
-  --rpc-url sepolia \
-  --broadcast
+```text
+txHashAt(blockNumber, transactionIndex) == transactionHash
 ```
 
-## Technical Details
+The contract can slash when a proof shows:
 
-### EIP-712 Structure
+- a different transaction at that exact index, or
+- no transaction at that exact index
 
-The demo signs an exact-position inclusion promise:
-`txHashAt(blockNumber, transactionIndex) == transactionHash`. The UI may detect several user-facing failure reasons,
-but the contract only slashes exact-position violations: a different transaction at that index or no transaction at that
-index.
+The demo does not prove whole-block omission or whether the signer was the canonical proposer/builder for the block.
 
-The canonical block timestamp is registered by the demo owner alongside the canonical block hash. The slasher accepts
-valid slash proofs for a fixed 1-day slashing window after that timestamp.
+## Build
 
-```javascript
-{
-  blockNumber: uint64,
-  transactionHash: bytes32, 
-  transactionIndex: uint64
-}
-```
-
-### Contract Integration
-- **Bond Management**: Direct smart contract calls via ethers.js
-- **Signature Verification**: Client-side EIP-712 validation
-- **Transaction Queries**: Ethereum RPC calls to verify inclusion
-
-### Network Handling
-- **Slasher Operations**: Current network (Sepolia for testing)
-- **Commitment Data**: Connected wallet network
-- **EIP-712 Signatures**: Use the network chainId where proposer is connected (e.g., Sepolia)
-- **RPC Endpoints**: 
-  - Mainnet: `https://ethereum-rpc.publicnode.com`
-  - Sepolia: `https://ethereum-sepolia-rpc.publicnode.com`
-
-**Important Caveat**: In this demo, the backend proposer signs commitments with `PROPOSER_PRIVATE_KEY` for the connected network. This means:
-- Commitment data includes block numbers and transaction hashes from the connected network
-- EIP-712 signatures include the connected chainId in the domain separator
-- Signature verification must use the same chainId as signing (Sepolia)
-- This is a demo-specific implementation - production deployments should align chainIds
-- The signature does not prove the signer was the canonical proposer/builder for the referenced block
-
-## Development
-
-### Key Files
-- `src/App.js`: Main application with tab navigation
-- `src/components/ProposerTab.js`: Bond management interface
-- `src/components/UserTab.js`: Preconfirmation and verification interface
-- `src/hooks/useWallet.js`: MetaMask integration
-- `src/utils/eip712.js`: EIP-712 signature utilities
-- `src/utils/ethereum.js`: Blockchain query utilities
-- `src/contracts.js`: Contract addresses and ABIs
-
-### Building for Production
-
-```bash
+```sh
 npm run build
 ```
 
-Creates optimized build in `build/` directory suitable for deployment.
+The generated `build/` directory is ignored by git.
 
-## Limitations & Future Work
+## Troubleshooting
 
-### Current Demo Limitations
-- Proposer signature simulation (real proposers would sign independently)
-- Slashing requires manual ZK proof generation
-- Limited to basic contract interactions
-- Demo proposer key is configured in the backend environment
-
-### Production Enhancements
-- Automated ZK proof generation for slashing
-- Proposer-specific signing interfaces
-- Advanced commitment management
-- Multi-network deployment coordination
-- Real-time monitoring and alerting
-
-## Security Considerations
-
-- Private keys never leave MetaMask
-- All signatures verified client-side
-- Contract interactions through established libraries
-- Network validation before transactions
-- Input validation for all user data
-
-## Support
-
-For issues or questions:
-1. Check contract deployment status in `deployment.env`
-2. Verify network configuration in MetaMask
-3. Ensure sufficient funds for gas fees
-4. Review browser console for detailed error messages
+- **Backend says prover network is not configured**: check root `.env` for `NETWORK_PRIVATE_KEY` and rebuild `target/release/evm`.
+- **Proposer key missing**: set `PROPOSER_PRIVATE_KEY` in the root `.env` and restart the backend.
+- **Canonical block registration fails**: set `OWNER_PRIVATE_KEY`, ensure it matches the deployed slasher owner, and fund it for gas.
+- **Slasher contract not found**: redeploy from `contracts/` or update `src/contracts.js`.
+- **Frontend cannot reach backend**: set `REACT_APP_BACKEND_URL` if the backend is not running on `http://localhost:3001`.

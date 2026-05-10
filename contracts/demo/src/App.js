@@ -32,7 +32,7 @@ function App() {
     <div className="app">
       {/* Header */}
       <div className="header">
-        <h1>TxInclusionPreciseSlasher Demo</h1>
+        <h1>Inclusion Preconfirmation Demo</h1>
         <p>Preconfirmation and Slashing Interface for Ethereum Transaction Inclusion</p>
       </div>
 
@@ -96,7 +96,6 @@ function App() {
           <ul style={{ margin: '10px 0', paddingLeft: '20px' }}>
             <li><strong>Proposer Tab:</strong> Manages the configured proposer on {wallet.getNetworkName()} network</li>
             <li><strong>User Tab:</strong> Shows the connected user wallet and requests proposer commitments</li>
-            <li><strong>Block Queries:</strong> Query the connected network for transaction inclusion verification</li>
           </ul>
         </div>
       )}

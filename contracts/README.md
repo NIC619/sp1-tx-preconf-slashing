@@ -1,61 +1,119 @@
-# SP1 Project Template Contracts
+# Contracts
 
-This is a template for writing a contract that uses verification of [SP1](https://github.com/succinctlabs/sp1) PlonK proofs onchain using the [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol).
+This directory contains the Solidity contracts, Foundry tests, deployment scripts, and the demo UI.
 
-## Requirements
+## Contracts
 
-- [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- `src/TransactionInclusionVerifier.sol`: verifies SP1 transaction-inclusion proofs and decodes public values.
+- `src/TxInclusionPreciseSlasher.sol`: manages proposer bonds, verifies exact-position EIP-712 commitments, registers canonical block metadata, and slashes supported violations.
+
+`TxInclusionPreciseSlasher` accepts two proof shapes:
+
+- a different transaction is included at the promised index
+- no transaction exists at the promised index
+
+It does not slash whole-block omission, missed proposer duty, or proposer identity failures.
+
+## Environment
+
+Copy the example and fill in deployment values:
+
+```sh
+cp .env.example .env
+```
+
+Required for deployment:
+
+```env
+DEPLOYER_PRIVATE_KEY=0x...
+OWNER_PRIVATE_KEY=0x...
+ETHERSCAN_API_KEY=...
+SP1_VERIFIER_ADDRESS=0x397A5f7f3dBd538f23DE225B51f532c34448dA9B
+TX_INCLUSION_PROGRAM_VKEY=0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
+```
+
+`DEPLOYER_PRIVATE_KEY` pays deployment gas. `OWNER_PRIVATE_KEY` determines the owner address passed to the verifier and slasher constructors.
 
 ## Test
 
 ```sh
-forge test -v
+forge build
+forge test
 ```
 
-## Deployment
-
-#### Step 1: Set the `VERIFIER` environment variable
-
-Find the address of the `verifier` to use from the [deployments](https://github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments) list for the chain you are deploying to. Set it to the `VERIFIER` environment variable, for example:
+Useful focused runs:
 
 ```sh
-VERIFIER=0x3B6041173B80E77f038f3F2C0f9744f04837185e
+forge test --match-contract TxInclusionPreciseSlasherTest
+forge test --match-contract TransactionInclusionGroth16Test
+forge test --match-contract TransactionInclusionPlonkTest
 ```
 
-Note: you can use either the [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol) or a specific version, but it is highly recommended to use the gateway as this will allow you to use different versions of SP1.
+## Deploy
 
-#### Step 2: Set the `PROGRAM_VKEY` environment variable
-
-Find your program verification key by going into the `../script` directory and running `RUST_LOG=info cargo run --package fibonacci-script --bin vkey --release`, which will print an output like:
-
-> Program Verification Key: 0x00620892344c310c32a74bf0807a5c043964264e4f37c96a10ad12b5c9214e0e
-
-Then set the `PROGRAM_VKEY` environment variable to the output of that command, for example:
+Deploy the verifier first, then the slasher:
 
 ```sh
-PROGRAM_VKEY=0x00620892344c310c32a74bf0807a5c043964264e4f37c96a10ad12b5c9214e0e
+./deploy-and-verify.sh verifier sepolia
+./deploy-and-verify.sh slasher sepolia
 ```
 
-#### Step 3: Deploy the contract
+The script:
 
-Fill out the rest of the details needed for deployment:
+- reads `.env`
+- reads/writes `deployment.env`
+- verifies on Etherscan
+- updates `demo/src/contracts.js`
+- updates `demo/README.md`
+
+Manual script commands are also supported:
 
 ```sh
-RPC_URL=...
+forge script script/DeployTransactionInclusionVerifier.s.sol:DeployTransactionInclusionVerifier \
+  --rpc-url sepolia \
+  --broadcast \
+  --verify \
+  --etherscan-api-key "$ETHERSCAN_API_KEY"
+
+forge script script/DeployTxInclusionPreciseSlasher.s.sol:DeployTxInclusionPreciseSlasher \
+  --rpc-url sepolia \
+  --broadcast \
+  --verify \
+  --etherscan-api-key "$ETHERSCAN_API_KEY"
 ```
+
+## Canonical Block Registration
+
+Before a slash succeeds, the slasher owner must register the canonical block hash and timestamp for the committed block. In the demo UI flow, the backend does this automatically with `OWNER_PRIVATE_KEY`.
+
+For manual testing:
 
 ```sh
-PRIVATE_KEY=...
+BLOCK_NUMBER=123 \
+BLOCK_HASH=0x... \
+BLOCK_TIMESTAMP=1234567890 \
+forge script script/RegisterCanonicalBlock.s.sol:RegisterCanonicalBlock \
+  --rpc-url sepolia \
+  --broadcast
 ```
 
-Then deploy the contract to the chain:
+## Deployment Output
 
-```sh
-forge create src/Fibonacci.sol:Fibonacci --rpc-url $RPC_URL --private-key $PRIVATE_KEY --constructor-args $VERIFIER $PROGRAM_VKEY
+`deployment.env` contains the latest contract metadata:
+
+```env
+TRANSACTION_INCLUSION_VERIFIER=0x...
+OWNER=0x...
+SP1_VERIFIER=0x...
+PROGRAM_VKEY=0x...
+
+TX_INCLUSION_PRECISE_SLASHER=0x...
+SLASHER_OWNER=0x...
+WITHDRAWAL_DELAY=100
+SLASH_AMOUNT=100000000000000000
+MIN_BOND_AMOUNT=100000000000000000
 ```
 
-It can also be a good idea to verify the contract when you deploy, in which case you would also need to set `ETHERSCAN_API_KEY`:
+## More Detail
 
-```sh
-forge create src/Fibonacci.sol:Fibonacci --rpc-url $RPC_URL --private-key $PRIVATE_KEY --constructor-args $VERIFIER $PROGRAM_VKEY --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
-```
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for a longer deployment guide and troubleshooting notes.

@@ -1,532 +1,128 @@
 # Transaction Inclusion Precise Slasher
 
-This project is a demo transaction-inclusion slashing system using zero-knowledge proofs. It demonstrates how block proposers can be slashed for a specific false inclusion commitment case.
+This repo is a working demo of exact-position transaction-inclusion commitments and slashing. A backend proposer signs an EIP-712 promise that a transaction will appear at a specific position in a block; the UI lets a user verify the promise, check the block, generate an SP1 proof through the Succinct Prover Network, and slash the proposer for supported violations.
 
-## Overview
+The demo is intentionally narrow: it proves exact-position failures. It does not prove whole-block omission, missed proposer duty, or canonical proposer/builder identity.
 
-The system enables:
-- **Proposer Commitments**: Block proposers make EIP-712 signed commitments to include transactions at specific indices
-- **Bond Management**: Proposers stake 0.1 ETH bonds with time-delayed withdrawals 
-- **Violation Detection**: Users detect exact-position commitment violations
-- **ZK Proof Slashing**: Generate SP1 proofs for supported exact-position slash paths
-- **Demo Canonical Anchor**: Require owner-registered canonical block metadata before a proof can slash
-- **Slashing Window**: Allow slash proofs for 1 day after the canonical block timestamp
-- **Real-time Proving**: Integration with Succinct Prover Network for live proof generation
-- **Interactive Demo**: Complete React UI for testing the entire slashing workflow
+## What To Try
 
-For the current design/security review and the issue-resolution plan, see [docs/SLASHER_DESIGN_REVIEW.md](./docs/SLASHER_DESIGN_REVIEW.md). For the broader demo-to-production delta, see [docs/PRODUCTION_GAPS.md](./docs/PRODUCTION_GAPS.md).
+Use the React demo in `contracts/demo` as the main entry point.
 
-Current limitation: the contract only slashes exact-position violations. It does not prove whole-block omission, proposer missed-duty, or proposer/builder identity failures. The registered block-hash anchor is a demo hardening step, not a production historical canonicality design.
+The User tab offers three cases:
 
-## Key Components
+- **Fulfilled commitment**: the promised transaction is actually at the promised position.
+- **Different transaction at promised position**: the block contains a different transaction at that position.
+- **No transaction at promised position**: the promised position is past the end of the block.
 
-1. **Smart Contracts**: `TxInclusionPreciseSlasher.sol` - Bond management and slashing logic
-2. **ZK Program**: SP1 RISC-V program for transaction inclusion verification  
-3. **Demo UI**: React application with MetaMask integration
-4. **Backend Service**: Node.js service for real-time proof generation
-5. **Rust Scripts**: Integration with Succinct Prover Network
-
-## Requirements
-
-- [Rust](https://rustup.rs/) `1.91.1`
-- [SP1](https://docs.succinct.xyz/docs/sp1/getting-started/install)
-- [Foundry](https://getfoundry.sh/) (for smart contract testing)
-- [Node.js](https://nodejs.org/) (for demo UI and backend)
-- Docker (for EVM-compatible proof generation)
-- `protoc` / protobuf compiler available on `PATH` for some Rust builds
-
-### Local Toolchain Notes
-
-- The repo is pinned to Rust `1.91.1` via [rust-toolchain](./rust-toolchain).
-- Some SP1/network-related Rust dependencies require `protoc`.
-
-Examples:
-
-```sh
-# Rust
-rustup toolchain install 1.91.1
-
-# macOS (Homebrew)
-brew install protobuf
-
-# verify
-rustup show active-toolchain
-protoc --version
-```
-
-## Project Structure
-
-```
-├── program/                    # SP1 RISC-V program for transaction inclusion verification
-├── script/                     # Rust scripts for proof generation and Succinct network integration
-├── contracts/                  # Solidity smart contracts and demo UI
-│   ├── src/                   # Smart contracts (TxInclusionPreciseSlasher.sol, etc.)
-│   ├── test/                  # Foundry tests
-│   ├── script/                # Deployment scripts
-│   └── demo/                  # React demo application
-│       ├── src/               # React components and utilities
-│       ├── backend/           # Node.js backend service
-│       └── REAL_TIME_PROVING_SETUP.md
-├── lib/                       # Shared library for transaction inclusion logic
-└── README.md
-```
+The Proposer tab uses `PROPOSER_PRIVATE_KEY` from the backend environment, not the connected browser wallet. The owner-controlled canonical block registration step uses `OWNER_PRIVATE_KEY` from the backend environment before slashing.
 
 ## Quick Start
 
-### Option A: Demo UI (Recommended)
-
-Experience the supported slashing workflow through the interactive demo:
-
-1. **Setup Environment**:
-   ```sh
-   # Configure your Succinct network private key (optional for demo)
-   echo "NETWORK_PRIVATE_KEY=0x..." > .env
-   ```
-
-2. **Deploy Contracts** (Sepolia testnet):
-   ```sh
-   cd contracts
-   forge script script/DeployTxInclusionPreciseSlasher.s.sol --broadcast --rpc-url https://ethereum-sepolia-rpc.publicnode.com
-   ```
-
-3. **Start Demo Application**:
-   ```sh
-   cd demo
-   npm install
-   npm start
-   ```
-
-4. **Experience the Slashing Flow**:
-   - Connect MetaMask to Sepolia testnet
-   - Switch between Proposer and User tabs
-   - Make commitments, detect violations, generate proofs, execute slashing
-
-### Option B: Direct Proof Generation
-
-For direct interaction with the ZK proof system:
-
-1. **Setup Environment**:
-   ```sh
-   # Set your Succinct network private key
-   echo "NETWORK_PRIVATE_KEY=0x..." > .env
-   ```
-
-2. **Test Transaction Inclusion** (Local execution):
-   ```sh
-   cd script
-   cargo run --release -- --execute
-   ```
-
-3. **Generate EVM-Compatible Proofs** (Succinct Network):
-   ```sh
-   cd script
-   # Live default: finalized - 2, first transaction in the block
-   SP1_PROVER=network cargo run --release --bin evm -- --system groth16
-   
-   # Generate proof for specific transaction
-   SP1_PROVER=network cargo run --release --bin evm -- \
-     --system groth16 \
-     --transaction-hash 0xd25efc79e658a77d3a136a674c04be15a1d2dfc2a695412028a9e51f5c1ee900
-   ```
-
-4. **Test Smart Contracts**:
-   ```sh
-   cd contracts
-   forge test
-   ```
-
-## Available Commands
-
-### Demo Application
-
-| Command | Purpose | Location |
-|---------|---------|----------|
-| `npm start` | Start React demo UI | `contracts/demo/` |
-| `npm start` | Start backend service | `contracts/demo/backend/` |
-
-### Contract Operations
-
-| Command | Purpose | Location |
-|---------|---------|----------|
-| `forge test` | Run all contract tests | `contracts/` |
-| `forge test --match-contract TxInclusionPreciseSlasherTest` | Run slasher tests | `contracts/` |
-| `forge script script/DeployTxInclusionPreciseSlasher.s.sol --broadcast` | Deploy slasher contract | `contracts/` |
-| `forge script script/DeployTransactionInclusionVerifier.s.sol --broadcast` | Deploy verifier contract | `contracts/` |
-
-### Proof Generation Scripts
-
-| Script | Purpose | Requirements |
-|--------|---------|--------------|
-| `cargo run --release -- --execute` | Execute live default input locally (`finalized - 2`, index `0`) | Local |
-| `cargo run --release -- --prove` | Generate core proof for live default input | Local |
-| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16` | Prover network EVM proof for live default input (recommended) | Network key + PROVE tokens |
-| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...` | Generate proof for a specific included transaction | Network key + PROVE tokens |
-| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-past-end` | Generate live absence proof at the first index past the selected block's transaction count | Network key + PROVE tokens |
-| `SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-block-number N --absence-transaction-index I` | Generate proof that no transaction exists at index `I` in block `N` | Network key + PROVE tokens |
-| `cargo run --release --bin evm -- --system groth16` | Local EVM proof for live default input | Local prover resources |
-| `./scripts/run_generated_fixture_e2e.sh groth16` | Generate a fresh fixture and verify it through Foundry | RPC access + prover resources |
-| `cargo run --release --bin vkey` | Get verification key | Local |
-
-### Rare-Run Network E2E Workflow
-
-There is also a dedicated GitHub Actions workflow for a paid, real-proof E2E check:
-
-- Workflow file: `.github/workflows/network-proof-e2e.yml`
-- GitHub environment: `paid-network-proof-e2e`
-- Trigger manually with `workflow_dispatch`
-- Trigger automatically on GitHub releases and pre-releases
-
-It is intentionally separate from regular CI because it consumes prover-network resources.
-
-Recommended setup:
-- create a protected GitHub Environment named `paid-network-proof-e2e`
-- add required reviewers so release/pre-release runs need explicit approval
-- store the paid-workflow credentials as environment secrets there
-
-Required environment secrets:
-- `NETWORK_PRIVATE_KEY`
-- `ETH_RPC_URL`
-
-Optional environment or repository variable:
-- `INCLUDED_TX` to generate the network E2E fixture for a specific included transaction.
-  If omitted, the script uses the live default: the first transaction in block `finalized - 2`.
-
-### Utility Scripts
-
-```sh
-# Get verification key for contracts
-cargo run --release --bin vkey
-```
-
-## Demo Application Features
-
-### Interactive Slashing Workflow
-
-The React demo provides an end-to-end experience for the currently supported slash path:
-
-1. **Proposer Tab**:
-   - Bond management (stake 0.1 ETH, initiate/complete withdrawals)
-   - Create EIP-712 signed transaction inclusion commitments
-   - View current bond status and pending withdrawals
-
-2. **User Tab**:
-   - Verify proposer commitments and signatures
-   - Check actual transaction inclusion against commitments
-   - Detect violations and distinguish slashable from not-yet-slashable cases
-   - Generate ZK proofs for supported exact-position slash paths
-   - Execute slashing transactions to burn violator bonds
-
-### Real-time Proof Generation
-
-The system supports two modes:
-
-1. **Fixture Mode**: Uses pre-generated proof for specific scenario:
-   - Block: 23354683, Transaction Index: 87
-   - Instant proof generation for testing
-
-2. **Live Mode**: Real-time proof generation via Succinct network:
-   - Integrates with your Rust `evm` binary using `SP1_PROVER=network`
-   - Generates proofs for supported exact-position violations
-   - Requires PROVE tokens and network configuration
-
-### Backend Integration
-
-The Node.js backend service (`contracts/demo/backend/`) provides:
-- REST API for proof generation requests
-- Integration with Rust binary execution
-- Cost estimation and status monitoring
-- Automatic fallback between real-time and fixture proofs
-
-**Setup Real-time Proving**:
-```sh
-# 1. Install backend dependencies
-cd contracts/demo/backend && npm install
-
-# 2. Build Rust binary
-cd ../../../script && cargo build --release --bin evm
-
-# 3. Start backend service
-cd ../contracts/demo/backend && npm start
-
-# 4. Start frontend
-cd .. && npm start
-```
-
-## Succinct Prover Network Setup
-
-### Prerequisites
-
-1. **PROVE Tokens**: Acquire PROVE tokens on Ethereum Mainnet
-2. **Deposit**: Deposit tokens into the Succinct Prover Network
-3. **Private Key**: Generate a Secp256k1 key pair and fund it with PROVE tokens
-
-### Configuration
-
-Set your private key in `.env`:
+Create a root `.env`:
 
 ```env
 SP1_PROVER=network
-NETWORK_PRIVATE_KEY=0x1234567890abcdef...
+NETWORK_PRIVATE_KEY=0x...
+PROPOSER_PRIVATE_KEY=0x...
+OWNER_PRIVATE_KEY=0x...
 ```
 
-### Advantages
-
-- ✅ **No Local Resources**: No need for 128GB RAM
-- ✅ **Faster Generation**: Optimized GPU clusters
-- ✅ **Cost Effective**: Pay only for what you use
-- ✅ **Reliable**: Professional infrastructure
-- ✅ **Monitoring**: Track proofs on [Succinct Explorer](https://explorer.succinct.xyz)
-
-## Smart Contract Architecture
-
-### Core Contracts
-
-1. **`TxInclusionPreciseSlasher.sol`**: Main slashing contract
-   - Bond management with 0.1 ETH minimum and 1-day withdrawal delay
-   - EIP-712 signature verification for commitments  
-   - ZK proof-based slashing with 100% bond burn
-   - Integration with SP1 verifier for proof validation
-
-2. **`TransactionInclusionVerifier.sol`**: ZK proof verification
-   - Wraps SP1 gateway for transaction inclusion proofs
-   - Returns structured public values for easy consumption
-
-### Deployment Configuration
-
-**Verification Key**: `0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769`
-
-#### Supported Networks
-
-| Network | Groth16 Gateway | PLONK Gateway |
-|---------|----------------|---------------|
-| Ethereum Mainnet | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` | `0x3B6041173B80E77f038f3F2C0f9744f04837185e` |
-| Sepolia | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` | `0x3B6041173B80E77f038f3F2C0f9744f04837185e` |
-| Arbitrum | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` | `0x3B6041173B80E77f038f3F2C0f9744f04837185e` |
-
-### Deployment Commands
+Build the proof binary used by the backend:
 
 ```sh
-# Deploy both contracts
+cargo build --release --bin evm
+```
+
+Start the backend:
+
+```sh
+cd contracts/demo/backend
+npm install
+npm start
+```
+
+Start the frontend in a second terminal:
+
+```sh
+cd contracts/demo
+npm install
+npm start
+```
+
+Open `http://localhost:3000`, connect MetaMask, and use the User tab to request a commitment, verify it, check inclusion, generate a proof, and slash when a supported violation is detected.
+
+## Current Contracts
+
+Contract deployment and testing commands live in [contracts/README.md](./contracts/README.md). The demo reads contract addresses from [contracts/demo/src/contracts.js](./contracts/demo/src/contracts.js), and `contracts/deploy-and-verify.sh` updates those addresses after deployments.
+
+The core contracts are:
+
+- `TransactionInclusionVerifier`: wraps SP1 proof verification and decodes transaction-inclusion public values.
+- `TxInclusionPreciseSlasher`: manages proposer bonds, verifies signed exact-position commitments, anchors canonical block metadata, and burns 0.1 ETH for valid slash proofs.
+
+## Repository Layout
+
+```text
+program/                 SP1 program
+script/                  Rust proof-generation binaries
+lib/                     Shared transaction-inclusion logic
+contracts/src/           Solidity contracts
+contracts/test/          Foundry tests
+contracts/script/        Deployment and owner scripts
+contracts/demo/          React UI and Node backend
+docs/                    Design notes and production gaps
+```
+
+## Useful Commands
+
+```sh
+# Rust checks
+cargo check
+cargo test
+
+# Contract tests
 cd contracts
+forge test
 
-# Deploy verifier
-forge script script/DeployTransactionInclusionVerifier.s.sol \
-  --broadcast --rpc-url https://ethereum-sepolia-rpc.publicnode.com
+# Frontend build
+cd contracts/demo
+npm run build
 
-# Deploy slasher (update VERIFIER_ADDRESS in script first)
-forge script script/DeployTxInclusionPreciseSlasher.s.sol \
-  --broadcast --rpc-url https://ethereum-sepolia-rpc.publicnode.com
+# Backend smoke check
+node -e "const app = require('./contracts/demo/backend/server.js'); console.log(typeof app)"
 ```
 
-### Contract Usage
+## Direct Proof Generation
 
-#### Slashing Contract Interface
-
-```solidity
-// Bond management
-contract.addBond{value: 0.1 ether}();
-contract.initiateWithdrawal(amount);
-contract.completeWithdrawal();
-
-// Slashing
-contract.slash(
-    commitment,     // InclusionCommitment struct
-    proposer,       // Signer address
-    v, r, s,       // EIP-712 signature
-    publicValues,   // ABI-encoded proof data
-    proofBytes      // ZK proof bytes
-);
-```
-
-#### EIP-712 Commitment Structure
-
-The current demo commitment has exact-position semantics: the proposer signs that
-`txHashAt(blockNumber, transactionIndex) == transactionHash`. A slash proof must therefore show either a different
-transaction at that exact index or no transaction at that exact index.
-
-```solidity
-struct InclusionCommitment {
-    uint64 blockNumber;
-    bytes32 transactionHash;
-    uint64 transactionIndex;
-}
-```
-
-The EIP-712 domain binds the signature to the deployed slasher contract and chain ID. The four-field struct does not
-claim anywhere-in-block inclusion, proposer-duty evidence, full transaction-byte constraints, cancellation semantics, or
-replacement semantics.
-
-The canonical block timestamp for `blockNumber` is registered by the owner alongside the canonical block hash. The demo
-slasher accepts valid slash proofs until `canonicalBlockTimestamp + SLASHING_WINDOW`, where `SLASHING_WINDOW` is
-currently 1 day.
-
-## Configuration
-
-### Transaction Selection
-
-Proof-generation commands support two input modes:
-
-1. **Live default**: if no transaction hash or absence block/index is provided, the script fetches the chain's finalized block, selects block `finalized - 2`, and uses the first transaction in that block.
-2. **User-provided transaction**: if `--transaction-hash 0x...` is provided, the script fetches that transaction and proves inclusion against the block number and transaction index reported by the RPC for that mined transaction.
-
-Examples:
+The UI is the preferred way to exercise the flow. For lower-level debugging, the `evm` binary can generate fixtures directly:
 
 ```sh
-# Live inclusion proof input: finalized - 2, transaction index 0
-cargo run --release -- --execute
-
-# Specific included transaction: block/index are read from the transaction metadata
-cargo run --release -- --execute --transaction-hash 0x...
-
-# Live EVM fixture: finalized - 2, transaction index 0
+# Inclusion proof for the first transaction in a recent finalized block
 SP1_PROVER=network cargo run --release --bin evm -- --system groth16
 
-# Specific included transaction EVM fixture
-SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0x...
+# Inclusion proof for a specific mined transaction
+SP1_PROVER=network cargo run --release --bin evm -- \
+  --system groth16 \
+  --transaction-hash 0x...
 
-# Live absence proof: finalized - 2, first index past the block's transaction count
-SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-past-end
+# Absence proof for a specific block/index
+SP1_PROVER=network cargo run --release --bin evm -- \
+  --system groth16 \
+  --absence-block-number 123 \
+  --absence-transaction-index 456 \
+  --transaction-hash 0x...
 
-# Specific absence proof
-SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --absence-block-number N --absence-transaction-index I
+# Different-transaction proof: prove the actual tx at the index while binding a separate committed tx
+SP1_PROVER=network cargo run --release --bin evm -- \
+  --system groth16 \
+  --transaction-hash 0xACTUAL_TX_AT_POSITION \
+  --committed-transaction-hash 0xCOMMITTED_TX
 ```
 
-### Network Configuration
+Generated fixtures are written under `contracts/src/fixtures/`.
 
-Update RPC URL for different networks:
+## Notes
 
-```sh
-SP1_PROVER=network cargo run --release --bin evm -- --eth-rpc-url https://your-rpc-url --system groth16
-```
-
-## Example Workflows
-
-### Demo UI Slashing Flow
-
-1. **Proposer creates commitment**:
-   ```
-   Block: 23354683, Index: 87
-   Transaction: 0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff33166021
-   ```
-
-2. **User detects violation**:
-   ```
-   ❌ Commitment Violation Detected: A different transaction was included
-   Actual transaction: 0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436
-   ```
-
-3. **Proof generation**:
-   ```
-   ✅ Using real Succinct proof for slashing
-   Proof Type: SUCCINCT_GROTH16
-   Block Number: 23354683, Index: 87
-   Is Included: true
-   ```
-
-4. **Slashing execution**:
-   ```
-   ✅ Slashing successful! Bond burned: 0.1 ETH
-   Transaction: 0xabc123...
-   Gas used: 489,234
-   ```
-
-### Direct Proof Generation
-
-By default, direct proof generation uses the live input mode: block `finalized - 2`, transaction index `0`.
-When a transaction hash is provided, the script resolves the transaction's mined block and index from RPC and proves against those values.
-
-Successful proof generation will show:
-
-```
-✅ Network private key found in environment
-Selected first transaction from block 23354683 (finalized block 23354685 - 2, 94 transactions)
-🎉 SUCCESS: Trie root MATCHES block transactions root!
-✅ Host validation successful - merkle proof is valid!
-
-=== PROOF REQUEST SUBMITTED ===
-Proof request submitted to Succinct Prover Network!
-Monitor your proof at: https://explorer.succinct.xyz/request/0x...
-
-✅ EVM-compatible proof generated successfully using Succinct Prover Network!
-
-=== EVM PROOF FIXTURE GENERATED ===
-Verification Key: 0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
-Block Hash: 0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff33166021
-Block Number: 23354683
-Transaction Hash: 0xd54acc3d86cf83ee241a6ad2cc5d394e91d142b85c96d7611b72bc267a9f9436
-Is Included: true
-```
-
-## Testing
-
-Run comprehensive tests:
-
-```sh
-# Test all contracts
-cd contracts && forge test
-
-# Test with verbose output
-forge test -vv
-
-# Test specific functions
-forge test --match-test test_ValidTransactionInclusionProof
-```
-
-## Troubleshooting
-
-### Demo Application Issues
-
-1. **"MetaMask not connected"**: 
-   - Install MetaMask extension
-   - Connect to Sepolia testnet
-   - Ensure account has test ETH
-
-2. **"Contract not deployed"**:
-   - Deploy contracts using the deployment scripts
-   - Update contract addresses in `demo/src/contracts.js`
-
-3. **"Cannot generate slashing proof"**:
-   - Use fixture scenario (block 23354683, index 87) for testing
-   - Or configure Succinct network for real-time proving
-   - Check backend service is running for live proofs
-
-4. **"Backend service not configured"**:
-   - Set `NETWORK_PRIVATE_KEY` in root `.env` file
-   - Build Rust binary: `cargo build --release --bin evm`
-   - Install backend dependencies: `cd demo/backend && npm install`
-
-### Proof Generation Issues
-
-1. **Network Private Key**: Ensure `NETWORK_PRIVATE_KEY` is set and funded with PROVE tokens
-2. **RAM Requirements**: Local EVM proof generation requires 128GB RAM - use network instead
-3. **RPC Limits**: Use a reliable Ethereum RPC endpoint for transaction data
-
-### Debug Commands
-
-```sh
-# Check verification key
-cargo run --release --bin vkey
-
-# Validate transaction data
-cargo run --release -- --execute
-
-# Test contract deployment
-cd contracts && forge test -vv
-
-# Check backend status
-curl http://localhost:3001/api/status
-
-# Test demo UI
-cd contracts/demo && npm start
-```
-
-## Resources
-
-- [SP1 Documentation](https://docs.succinct.xyz/)
-- [Succinct Prover Network](https://docs.succinct.xyz/docs/sp1/prover-network/quickstart)
-- [SP1 Contract Addresses](https://docs.succinct.xyz/docs/sp1/verification/contract-addresses)
-- [Succinct Explorer](https://explorer.succinct.xyz)
-
-## License
-
-MIT
+- Local EVM proof generation can be resource-heavy; the demo flow assumes Succinct network proving.
+- The canonical block hash/timestamp registration is a demo-grade owner anchor, not a production historical canonicality design.
+- For production considerations, see [docs/PRODUCTION_GAPS.md](./docs/PRODUCTION_GAPS.md).
