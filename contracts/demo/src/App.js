@@ -38,7 +38,7 @@ function App() {
 
       {/* Wallet Status */}
       <div className="wallet-status">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="wallet-row">
           <div>
             {wallet.isConnected ? (
               <span className="wallet-connected">
@@ -51,7 +51,7 @@ function App() {
             )}
           </div>
           
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="wallet-actions">
             {!wallet.isConnected ? (
               <button 
                 className="connect-button" 
@@ -120,8 +120,8 @@ function App() {
       </div>
 
       {/* Footer Info */}
-      <div style={{ marginTop: '40px', padding: '20px', background: '#f8f9fa', borderRadius: '10px', fontSize: '14px', color: '#6c757d' }}>
-        <h4 style={{ marginTop: 0, color: '#495057' }}>How it works:</h4>
+      <div className="footer-panel">
+        <h4>How it works:</h4>
         <ol style={{ paddingLeft: '20px' }}>
           <li><strong>Proposer Tab:</strong> The configured proposer deposits bonds and manages withdrawals on the slasher contract</li>
           <li><strong>User Tab - Request:</strong> Users choose a recent finalized-block case and request a proposer commitment</li>
@@ -130,7 +130,7 @@ function App() {
           <li><strong>Slashing:</strong> If proposers break commitments, their bonds can be slashed as punishment</li>
         </ol>
         
-        <div style={{ marginTop: '15px', padding: '10px', background: '#fff3cd', borderRadius: '5px' }}>
+        <div className="footer-note">
           <strong>⚠️ Demo Note:</strong> This is a demonstration interface. In production:
           <ul style={{ marginTop: '5px', paddingLeft: '20px' }}>
             <li>Proposers would run their own interfaces to sign commitments</li>
