@@ -36,6 +36,7 @@ contract TxInclusionPreciseSlasherTest is Test {
 
     uint256 internal proposerPrivateKey = 0x1;
     address internal proposer;
+    address internal owner = address(this);
     address internal user = address(0x2);
 
     uint256 internal constant WITHDRAWAL_DELAY = 1 days;
@@ -55,7 +56,7 @@ contract TxInclusionPreciseSlasherTest is Test {
         proposer = vm.addr(proposerPrivateKey);
 
         mockVerifier = new MockTransactionInclusionVerifier();
-        slasher = new TxInclusionPreciseSlasher(address(mockVerifier), WITHDRAWAL_DELAY);
+        slasher = new TxInclusionPreciseSlasher(owner, address(mockVerifier), WITHDRAWAL_DELAY);
 
         vm.deal(proposer, 10 ether);
         vm.deal(user, 10 ether);
@@ -66,7 +67,7 @@ contract TxInclusionPreciseSlasherTest is Test {
         assertEq(slasher.MIN_BOND_AMOUNT(), MIN_BOND_AMOUNT);
         assertEq(slasher.SLASHING_WINDOW(), SLASHING_WINDOW);
         assertEq(slasher.BURN_ADDRESS(), address(0));
-        assertEq(slasher.OWNER(), address(this));
+        assertEq(slasher.OWNER(), owner);
         assertEq(slasher.WITHDRAWAL_DELAY(), WITHDRAWAL_DELAY);
         assertEq(slasher.INCLUSION_VERIFIER(), address(mockVerifier));
     }

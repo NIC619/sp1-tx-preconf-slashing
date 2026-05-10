@@ -35,9 +35,11 @@ const SLASHER_ABI = [
   'function MIN_BOND_AMOUNT() view returns (uint256)',
   'function SLASH_AMOUNT() view returns (uint256)',
   'function WITHDRAWAL_DELAY() view returns (uint256)',
+  'function canonicalBlockHashes(uint64 blockNumber) view returns (bytes32)',
   'function addBond() payable',
   'function initiateWithdrawal(uint256 amount)',
-  'function completeWithdrawal()'
+  'function completeWithdrawal()',
+  'function registerCanonicalBlock(uint64 blockNumber, bytes32 blockHash, uint256 blockTimestamp)'
 ];
 
 const EIP712_DOMAIN = {
@@ -70,6 +72,17 @@ function getProposerWallet(chainId) {
   const network = getNetwork(chainId);
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
   const wallet = new ethers.Wallet(process.env.PROPOSER_PRIVATE_KEY, provider);
+  return { wallet, provider, network };
+}
+
+function getOwnerWallet(chainId) {
+  if (!process.env.OWNER_PRIVATE_KEY) {
+    throw new Error('OWNER_PRIVATE_KEY environment variable is required');
+  }
+
+  const network = getNetwork(chainId);
+  const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+  const wallet = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY, provider);
   return { wallet, provider, network };
 }
 
@@ -258,6 +271,60 @@ app.post('/api/proposer/complete-withdrawal', async (req, res) => {
   }
 });
 
+app.post('/api/owner/register-canonical-block', async (req, res) => {
+  try {
+    const { chainId, slasherAddress, blockNumber } = req.body;
+    requireAddress(slasherAddress, 'slasherAddress');
+    if (!blockNumber && blockNumber !== 0) {
+      throw new Error('blockNumber is required');
+    }
+
+    const { wallet, provider } = getOwnerWallet(chainId);
+    const numericBlockNumber = Number(blockNumber);
+    const block = await provider.getBlock(numericBlockNumber);
+    if (!block) {
+      throw new Error(`Block ${blockNumber} not found on ${getNetwork(chainId).name}`);
+    }
+
+    const contract = new ethers.Contract(slasherAddress, SLASHER_ABI, wallet);
+    const registeredHash = await contract.canonicalBlockHashes(numericBlockNumber);
+    if (registeredHash !== ethers.ZeroHash) {
+      if (registeredHash.toLowerCase() !== block.hash.toLowerCase()) {
+        throw new Error(`Canonical block ${blockNumber} is already registered with a different hash`);
+      }
+
+      return res.json({
+        success: true,
+        alreadyRegistered: true,
+        ownerAddress: wallet.address,
+        blockNumber: numericBlockNumber,
+        blockHash: block.hash,
+        blockTimestamp: block.timestamp
+      });
+    }
+
+    const tx = await contract.registerCanonicalBlock(
+      numericBlockNumber,
+      block.hash,
+      block.timestamp
+    );
+    const receipt = await tx.wait();
+
+    res.json({
+      success: true,
+      alreadyRegistered: false,
+      ownerAddress: wallet.address,
+      transactionHash: tx.hash,
+      registrationBlockNumber: receipt.blockNumber,
+      blockNumber: numericBlockNumber,
+      blockHash: block.hash,
+      blockTimestamp: block.timestamp
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /**
  * Generate a real-time proof using the Rust Succinct prover
  */
@@ -412,12 +479,14 @@ app.post('/api/estimate-cost', async (req, res) => {
 app.get('/api/status', (req, res) => {
   const hasNetworkKey = !!process.env.NETWORK_PRIVATE_KEY;
   const hasProposerKey = !!process.env.PROPOSER_PRIVATE_KEY;
+  const hasOwnerKey = !!process.env.OWNER_PRIVATE_KEY;
   const rustBinaryExists = require('fs').existsSync(RUST_BINARY_PATH);
 
   res.json({
     configured: hasNetworkKey && rustBinaryExists,
     hasNetworkKey,
     hasProposerKey,
+    hasOwnerKey,
     rustBinaryExists,
     rustBinaryPath: RUST_BINARY_PATH
   });
@@ -433,6 +502,7 @@ if (require.main === module) {
     console.log(`Rust binary exists: ${rustBinaryExists}`);
     console.log(`Network key configured: ${!!process.env.NETWORK_PRIVATE_KEY}`);
     console.log(`Proposer key configured: ${!!process.env.PROPOSER_PRIVATE_KEY}`);
+    console.log(`Owner key configured: ${!!process.env.OWNER_PRIVATE_KEY}`);
     console.log(`✅ Succinct network ready: ${isConfigured}`);
   });
 }

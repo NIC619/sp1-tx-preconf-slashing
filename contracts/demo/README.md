@@ -36,6 +36,7 @@ A React-based web application demonstrating the complete flow of the TxInclusion
 - MetaMask browser extension
 - Access to Sepolia testnet ETH (for testing)
 - `PROPOSER_PRIVATE_KEY` in the repository root `.env` for backend proposer signing and bond operations
+- `OWNER_PRIVATE_KEY` in the repository root `.env` for backend canonical block registration before slashing
 
 ### Installation
 
@@ -57,7 +58,7 @@ npm install
 npm start
 ```
 
-The backend reads `PROPOSER_PRIVATE_KEY` and `NETWORK_PRIVATE_KEY` from the repository root `.env` file.
+The backend reads `PROPOSER_PRIVATE_KEY`, `OWNER_PRIVATE_KEY`, and `NETWORK_PRIVATE_KEY` from the repository root `.env` file.
 
 ### Configuration
 
@@ -113,13 +114,13 @@ export const CONTRACTS = {
 4. **Slash Proposer** (if violation detected):
    - Evidence of broken commitment is displayed
    - Generate a ZK proof
-   - Ask the contract owner to register the canonical block metadata
+   - The backend registers the canonical block metadata with `OWNER_PRIVATE_KEY`
    - Execute the slashing transaction
 
 ### Register Canonical Block Metadata
 
 The slasher requires the owner to register the canonical block hash and timestamp for the committed block before a slash
-can succeed:
+can succeed. The demo UI now does this automatically before submitting the slashing transaction. To run it manually:
 
 ```bash
 cd ../

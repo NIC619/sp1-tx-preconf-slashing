@@ -68,9 +68,14 @@ contract TxInclusionPreciseSlasher {
     error CommittedTransactionHashMismatch();
     error TransactionCannotBeIncluded();
     error TransactionIndexMismatch();
+    error InvalidOwner();
 
-    constructor(address _inclusionVerifier, uint256 _withdrawalDelay) {
-        OWNER = msg.sender;
+    constructor(address _owner, address _inclusionVerifier, uint256 _withdrawalDelay) {
+        if (_owner == address(0)) {
+            revert InvalidOwner();
+        }
+
+        OWNER = _owner;
         INCLUSION_VERIFIER = _inclusionVerifier;
         WITHDRAWAL_DELAY = _withdrawalDelay;
 

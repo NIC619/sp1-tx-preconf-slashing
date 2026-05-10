@@ -36,7 +36,7 @@ contract GeneratedFixtureE2ETest is Test {
 
         address verifier = address(new SP1VerifierGateway(address(1)));
         TransactionInclusionVerifier txInclusionVerifier =
-            new TransactionInclusionVerifier(verifier, fixture.vkey);
+            new TransactionInclusionVerifier(address(this), verifier, fixture.vkey);
 
         vm.mockCall(
             verifier,

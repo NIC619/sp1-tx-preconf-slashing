@@ -395,7 +395,26 @@ const UserTab = ({ wallet }) => {
       const signature = verificationResult.signature;
       const { v, r, s } = ethers.Signature.from(signature);
 
-      setSuccess('Transaction submitted. Waiting for confirmation...');
+      setSuccess('Registering canonical block hash and timestamp with the owner key...');
+      const registrationResponse = await fetch(`${backendUrl}/api/owner/register-canonical-block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chainId: wallet.chainId,
+          slasherAddress,
+          blockNumber: verificationResult.commitment.blockNumber.toString()
+        })
+      });
+      const registrationResult = await registrationResponse.json();
+      if (!registrationResponse.ok) {
+        throw new Error(registrationResult.error || 'Canonical block registration failed');
+      }
+
+      setSuccess(
+        registrationResult.alreadyRegistered
+          ? 'Canonical block already registered. Submitting slashing transaction...'
+          : 'Canonical block registered. Submitting slashing transaction...'
+      );
 
       // Call slash function
       const tx = await slasherContract.slash(
@@ -410,6 +429,7 @@ const UserTab = ({ wallet }) => {
 
       console.log('Slashing transaction submitted:', tx.hash);
 
+      setSuccess('Slashing transaction submitted. Waiting for confirmation...');
       await tx.wait();
 
       setSuccess('✅ Slashing successful! Proposer has been slashed for breaking their commitment.');

@@ -71,8 +71,14 @@ contract TransactionInclusionVerifier {
         _;
     }
 
-    constructor(address _verifier, bytes32 _txInclusionProgramVKey) {
-        owner = msg.sender; // Set deployer as owner
+    error InvalidOwner();
+
+    constructor(address _owner, address _verifier, bytes32 _txInclusionProgramVKey) {
+        if (_owner == address(0)) {
+            revert InvalidOwner();
+        }
+
+        owner = _owner;
         verifier = _verifier;
         txInclusionProgramVKey = _txInclusionProgramVKey;
     }

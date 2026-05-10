@@ -59,7 +59,7 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        txInclusionVerifier = new TransactionInclusionVerifier(verifier, fixture.vkey);
+        txInclusionVerifier = new TransactionInclusionVerifier(address(this), verifier, fixture.vkey);
     }
 
     function test_ValidTransactionInclusionProof() public {

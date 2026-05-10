@@ -37,7 +37,7 @@ append_slasher_deployment() {
     fi
 
     if [ -f "deployment.env" ]; then
-        grep -v -E '^(# TxInclusionPreciseSlasher deployment info|TX_INCLUSION_PRECISE_SLASHER=|WITHDRAWAL_DELAY=|SLASH_AMOUNT=|MIN_BOND_AMOUNT=)' \
+        grep -v -E '^(# TxInclusionPreciseSlasher deployment info|TX_INCLUSION_PRECISE_SLASHER=|SLASHER_OWNER=|WITHDRAWAL_DELAY=|SLASH_AMOUNT=|MIN_BOND_AMOUNT=)' \
             deployment.env > deployment.env.tmp || true
         mv deployment.env.tmp deployment.env
     fi
@@ -125,6 +125,11 @@ echo ""
 # Check required environment variables
 if [ -z "$PRIVATE_KEY" ]; then
     echo "Error: PRIVATE_KEY environment variable is required"
+    exit 1
+fi
+
+if [ -z "$OWNER_PRIVATE_KEY" ]; then
+    echo "Error: OWNER_PRIVATE_KEY environment variable is required"
     exit 1
 fi
 
@@ -233,6 +238,7 @@ if [ $? -eq 0 ]; then
             echo "=== DEPLOYMENT SUMMARY ==="
             echo "Contract: TxInclusionPreciseSlasher"
             echo "Address: $TX_INCLUSION_PRECISE_SLASHER"
+            echo "Owner: $SLASHER_OWNER"
             echo "Inclusion Verifier: $TRANSACTION_INCLUSION_VERIFIER"
             echo "Withdrawal Delay: $WITHDRAWAL_DELAY seconds"
             echo "Slash Amount: $SLASH_AMOUNT wei"

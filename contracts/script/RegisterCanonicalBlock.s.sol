@@ -7,7 +7,7 @@ import {TxInclusionPreciseSlasher} from "../src/TxInclusionPreciseSlasher.sol";
 
 contract RegisterCanonicalBlock is DeploymentEnvReader {
     function run() external {
-        uint256 ownerPrivateKey = vm.envUint("PRIVATE_KEY");
+        uint256 ownerPrivateKey = vm.envUint("OWNER_PRIVATE_KEY");
         uint64 blockNumber = uint64(vm.envUint("BLOCK_NUMBER"));
         bytes32 blockHash = vm.envBytes32("BLOCK_HASH");
         uint256 blockTimestamp = vm.envUint("BLOCK_TIMESTAMP");

@@ -8,6 +8,8 @@ import {TxInclusionPreciseSlasher} from "../src/TxInclusionPreciseSlasher.sol";
 contract DeployTxInclusionPreciseSlasher is DeploymentEnvReader {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        uint256 ownerPrivateKey = vm.envUint("OWNER_PRIVATE_KEY");
+        address owner = vm.addr(ownerPrivateKey);
         uint256 withdrawalDelay = 100 seconds;
 
         address inclusionVerifier = _readDeploymentAddress("TRANSACTION_INCLUSION_VERIFIER");
@@ -15,11 +17,13 @@ contract DeployTxInclusionPreciseSlasher is DeploymentEnvReader {
         vm.startBroadcast(deployerPrivateKey);
 
         TxInclusionPreciseSlasher slasher = new TxInclusionPreciseSlasher(
+            owner,
             inclusionVerifier,
             withdrawalDelay
         );
 
         console.log("TxInclusionPreciseSlasher deployed at:", address(slasher));
+        console.log("Owner:", owner);
         console.log("Inclusion Verifier:", inclusionVerifier);
         console.log("Withdrawal Delay (seconds):", withdrawalDelay);
         console.log("Slash Amount:", slasher.SLASH_AMOUNT());
@@ -30,6 +34,7 @@ contract DeployTxInclusionPreciseSlasher is DeploymentEnvReader {
         // Write deployment info to file
         string memory deploymentInfo = string.concat(
             "TX_INCLUSION_PRECISE_SLASHER=", vm.toString(address(slasher)), "\n",
+            "SLASHER_OWNER=", vm.toString(owner), "\n",
             "WITHDRAWAL_DELAY=", vm.toString(withdrawalDelay), "\n",
             "SLASH_AMOUNT=", vm.toString(slasher.SLASH_AMOUNT()), "\n",
             "MIN_BOND_AMOUNT=", vm.toString(slasher.MIN_BOND_AMOUNT()), "\n"

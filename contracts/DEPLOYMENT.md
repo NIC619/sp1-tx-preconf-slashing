@@ -26,6 +26,7 @@ Then edit `.env` with your values:
 ```bash
 # Required for all deployments
 PRIVATE_KEY=0x...
+OWNER_PRIVATE_KEY=0x...
 ETHERSCAN_API_KEY=your_api_key_here
 
 # Required for TransactionInclusionVerifier deployment
@@ -111,6 +112,7 @@ PROGRAM_VKEY=0x...
 
 # TxInclusionPreciseSlasher deployment info
 TX_INCLUSION_PRECISE_SLASHER=0x...
+SLASHER_OWNER=0x...
 WITHDRAWAL_DELAY=86400
 SLASH_AMOUNT=100000000000000000
 MIN_BOND_AMOUNT=100000000000000000
@@ -119,7 +121,7 @@ MIN_BOND_AMOUNT=100000000000000000
 ## Contract Features
 
 ### TransactionInclusionVerifier
-- **Owner Control**: The deployer becomes the owner and can update the verification key
+- **Owner Control**: `OWNER_PRIVATE_KEY` determines the owner that can update the verification key
 - **SP1 Integration**: Uses SP1 verifier for ZK proof verification
 - **Event Logging**: Emits events for proof verifications and key updates
 - **View Functions**: Includes both state-changing and view-only verification functions
@@ -163,7 +165,8 @@ slasher.slash(commitment, proposer, v, r, s, publicValues, proofBytes);
 ### Register Canonical Block Metadata
 
 Before a slash can succeed, the owner must register the canonical block hash and timestamp for the committed block.
-`RegisterCanonicalBlock.s.sol` reads `TX_INCLUSION_PRECISE_SLASHER` from `deployment.env`.
+`RegisterCanonicalBlock.s.sol` reads `TX_INCLUSION_PRECISE_SLASHER` from `deployment.env` and broadcasts with
+`OWNER_PRIVATE_KEY`.
 
 ```bash
 BLOCK_NUMBER=23354683 \
