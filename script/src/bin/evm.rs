@@ -21,8 +21,8 @@ use clap::{Parser, ValueEnum};
 use eyre::Result;
 use sp1_sdk::{include_elf, Elf, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin};
 use tx_inclusion_precise_index::{
-    default_fixture_output_path, fixture_from_proof,
-    load_repo_dotenv, select_first_transaction_from_recent_finalized_block, write_fixture_file,
+    default_fixture_output_path, fixture_from_proof, load_repo_dotenv,
+    select_first_transaction_from_recent_finalized_block, write_fixture_file,
     RECENT_FINALIZED_OFFSET,
 };
 use tx_inclusion_precise_index_lib::{
@@ -49,6 +49,11 @@ struct EVMArgs {
         help = "Transaction hash to prove; omitted means first transaction from finalized - 2"
     )]
     transaction_hash: Option<String>,
+    #[arg(
+        long,
+        help = "Committed transaction hash when proving that a different transaction was included at the promised index"
+    )]
+    committed_transaction_hash: Option<String>,
     #[arg(
         long,
         help = "Block number for a no-transaction-at-index absence proof"
@@ -149,7 +154,11 @@ async fn main() -> Result<()> {
             .ok_or_else(|| eyre::eyre!("Block not found"))?;
 
         let merkle_proof = generate_merkle_absence_proof(&provider, block_number, tx_index).await?;
-        let committed_raw_transaction = if let Some(transaction_hash) = args.transaction_hash {
+        let committed_hash = args
+            .committed_transaction_hash
+            .clone()
+            .or_else(|| args.transaction_hash.clone());
+        let committed_raw_transaction = if let Some(transaction_hash) = committed_hash {
             let committed_tx = provider
                 .get_transaction_by_hash(transaction_hash.parse()?)
                 .await?
@@ -176,7 +185,8 @@ async fn main() -> Result<()> {
             prove_absence: true,
         }
     } else {
-        let (block_number, tx_index) = if let Some(transaction_hash) = args.transaction_hash {
+        let (block_number, tx_index) = if let Some(transaction_hash) = args.transaction_hash.clone()
+        {
             // Get the transaction details
             let tx = provider
                 .get_transaction_by_hash(transaction_hash.parse()?)
@@ -217,13 +227,24 @@ async fn main() -> Result<()> {
         // Generate Merkle proof
         let (merkle_proof, encoded_tx_bytes) =
             generate_merkle_proof(&provider, block_number, tx_index).await?;
+        let committed_raw_transaction =
+            if let Some(committed_transaction_hash) = args.committed_transaction_hash {
+                let committed_tx = provider
+                    .get_transaction_by_hash(committed_transaction_hash.parse()?)
+                    .await?
+                    .ok_or_else(|| eyre::eyre!("Committed transaction not found"))?;
+                encode_transaction_for_trie(&committed_tx)?
+            } else {
+                encoded_tx_bytes.clone()
+            };
         let sender_witness =
-            generate_sender_account_witness(&provider, block_number, &encoded_tx_bytes).await?;
+            generate_sender_account_witness(&provider, block_number, &committed_raw_transaction)
+                .await?;
 
         TransactionInclusionInput {
             block_header: block.header.clone().into(),
             parent_block_header: sender_witness.parent_block_header,
-            committed_raw_transaction: encoded_tx_bytes.clone(),
+            committed_raw_transaction,
             sender_account: sender_witness.account,
             sender_account_proof: sender_witness.proof,
             raw_transaction: encoded_tx_bytes,

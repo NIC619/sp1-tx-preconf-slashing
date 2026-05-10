@@ -1,16 +1,166 @@
 import { ethers } from 'ethers';
 
-// Create a provider for querying mainnet data (commitments always on mainnet)
+// Create a provider for querying mainnet data.
 export const getMainnetProvider = () => {
   return new ethers.JsonRpcProvider('https://ethereum-rpc.publicnode.com');
 };
 
-export const getTransactionAtIndex = async (blockNumber, transactionIndex) => {
+const toHexBlockNumber = (blockNumber) => {
+  return `0x${Number(blockNumber).toString(16)}`;
+};
+
+const getQueryProvider = (provider) => provider || getMainnetProvider();
+
+const normalizeTransactionDetails = (transactionHashOrObject) => {
+  if (!transactionHashOrObject) {
+    return { transactionHash: null, transactionDetails: null };
+  }
+
+  if (typeof transactionHashOrObject === 'string') {
+    return { transactionHash: transactionHashOrObject, transactionDetails: null };
+  }
+
+  return {
+    transactionHash: transactionHashOrObject.hash,
+    transactionDetails: {
+      from: transactionHashOrObject.from,
+      to: transactionHashOrObject.to,
+      value: ethers.formatEther(transactionHashOrObject.value || 0),
+      gasLimit: transactionHashOrObject.gasLimit?.toString() || transactionHashOrObject.gas?.toString(),
+      gasPrice: transactionHashOrObject.gasPrice ? ethers.formatUnits(transactionHashOrObject.gasPrice, 'gwei') : null,
+      nonce: Number(transactionHashOrObject.nonce)
+    }
+  };
+};
+
+const normalizeTransactionHash = (transactionHashOrObject) => {
+  if (!transactionHashOrObject) {
+    return null;
+  }
+  return typeof transactionHashOrObject === 'string'
+    ? transactionHashOrObject
+    : transactionHashOrObject.hash;
+};
+
+const findAlternateCommittedTransaction = (transactions) => {
+  if (!transactions || transactions.length < 2) {
+    return null;
+  }
+
+  const firstTransaction = transactions[0];
+  const firstSender = typeof firstTransaction === 'string'
+    ? null
+    : firstTransaction.from?.toLowerCase();
+
+  if (firstSender) {
+    const alternate = transactions
+      .slice(1)
+      .find((transaction) => transaction.from?.toLowerCase() !== firstSender);
+    if (alternate) {
+      return alternate;
+    }
+  }
+
+  return transactions[1];
+};
+
+const buildCommitmentCases = (block, targetBlockNumber) => {
+  const transactions = block.transactions || [];
+  const firstTransaction = transactions[0];
+  const alternateTransaction = findAlternateCommittedTransaction(transactions);
+  const { transactionHash: firstTransactionHash } = normalizeTransactionDetails(firstTransaction);
+  const cases = [
+    {
+      id: 'FULFILLED',
+      label: 'Fulfilled commitment',
+      outcome: 'Correct inclusion',
+      tone: 'success',
+      description: 'The proposer signs a promise that matches what the block actually contains. The inclusion check should pass, so there should be nothing to slash.',
+      blockNumber: targetBlockNumber,
+      blockHash: block.hash,
+      transactionHash: firstTransactionHash,
+      transactionIndex: 0,
+      observedTransactionHash: firstTransactionHash,
+      proofMode: 'not-needed'
+    },
+    {
+      id: 'NO_TRANSACTION',
+      label: 'No transaction at promised position',
+      outcome: 'Slashable absence',
+      tone: 'danger',
+      description: 'The proposer signs a promise for a position that does not exist in this block. The user can prove the block ended before that promised position, so the proposer broke the exact-position promise.',
+      blockNumber: targetBlockNumber,
+      blockHash: block.hash,
+      transactionHash: firstTransactionHash,
+      transactionIndex: transactions.length,
+      observedTransactionHash: null,
+      proofMode: 'absence'
+    }
+  ];
+
+  if (alternateTransaction) {
+    cases.splice(1, 0, {
+      id: 'DIFFERENT_TRANSACTION',
+      label: 'Different transaction at promised position',
+      outcome: 'Slashable mismatch',
+      tone: 'danger',
+      description: 'The proposer signs a promise for one transaction, but the block contains a different transaction at that same promised position. The user can prove the mismatch and slash the proposer.',
+      blockNumber: targetBlockNumber,
+      blockHash: block.hash,
+      transactionHash: normalizeTransactionHash(alternateTransaction),
+      transactionIndex: 0,
+      observedTransactionHash: firstTransactionHash,
+      proofMode: 'different-transaction'
+    });
+  }
+
+  return cases;
+};
+
+export const getFinalizedMinusTwoFirstTransaction = async (provider) => {
+  const queryProvider = getQueryProvider(provider);
+  const finalizedBlock = await queryProvider.send('eth_getBlockByNumber', ['finalized', false]);
+
+  if (!finalizedBlock?.number) {
+    throw new Error('Could not fetch finalized block from connected network');
+  }
+
+  const finalizedBlockNumber = Number(BigInt(finalizedBlock.number));
+  const targetBlockNumber = finalizedBlockNumber - 2;
+  if (targetBlockNumber <= 0) {
+    throw new Error(`Finalized block ${finalizedBlockNumber} is too low for finalized - 2`);
+  }
+
+  const block = await queryProvider.send('eth_getBlockByNumber', [toHexBlockNumber(targetBlockNumber), true]);
+  if (!block) {
+    throw new Error(`Could not fetch block ${targetBlockNumber}`);
+  }
+  if (!block.transactions || block.transactions.length === 0) {
+    throw new Error(`Block ${targetBlockNumber} has no transactions`);
+  }
+
+  const firstTransaction = block.transactions[0];
+  const { transactionHash, transactionDetails } = normalizeTransactionDetails(firstTransaction);
+  const commitmentCases = buildCommitmentCases(block, targetBlockNumber);
+
+  return {
+    finalizedBlockNumber,
+    blockNumber: targetBlockNumber,
+    blockHash: block.hash,
+    transactionHash,
+    transactionIndex: 0,
+    transactionCount: block.transactions.length,
+    transaction: transactionDetails,
+    commitmentCases
+  };
+};
+
+export const getTransactionAtIndex = async (blockNumber, transactionIndex, provider) => {
   try {
-    const provider = getMainnetProvider();
+    const queryProvider = getQueryProvider(provider);
     
     // Get the block with all transactions
-    const block = await provider.getBlock(blockNumber, true);
+    const block = await queryProvider.getBlock(blockNumber, true);
     
     if (!block) {
       return {
@@ -54,26 +204,7 @@ export const getTransactionAtIndex = async (blockNumber, transactionIndex) => {
     const transactionHashOrObject = block.transactions[transactionIndex];
     
     // Handle both cases: transaction hash string or transaction object
-    let transactionHash;
-    let transactionDetails = null;
-    
-    if (typeof transactionHashOrObject === 'string') {
-      // If it's a string, it's just the hash
-      transactionHash = transactionHashOrObject;
-      console.log('Debug - Got transaction hash string:', transactionHash);
-    } else if (transactionHashOrObject && typeof transactionHashOrObject === 'object') {
-      // If it's an object, get the hash property
-      transactionHash = transactionHashOrObject.hash;
-      transactionDetails = {
-        from: transactionHashOrObject.from,
-        to: transactionHashOrObject.to,
-        value: ethers.formatEther(transactionHashOrObject.value || 0),
-        gasLimit: transactionHashOrObject.gasLimit?.toString(),
-        gasPrice: transactionHashOrObject.gasPrice ? ethers.formatUnits(transactionHashOrObject.gasPrice, 'gwei') : null,
-        nonce: transactionHashOrObject.nonce
-      };
-      console.log('Debug - Got transaction object with hash:', transactionHash);
-    }
+    const { transactionHash, transactionDetails } = normalizeTransactionDetails(transactionHashOrObject);
     
     console.log('Debug - Block has', block.transactions.length, 'transactions');
     console.log('Debug - Final transaction hash:', transactionHash);
@@ -101,9 +232,9 @@ export const getTransactionAtIndex = async (blockNumber, transactionIndex) => {
   }
 };
 
-export const checkTransactionInclusion = async (blockNumber, expectedTxHash, expectedTxIndex) => {
+export const checkTransactionInclusion = async (blockNumber, expectedTxHash, expectedTxIndex, provider) => {
   try {
-    const result = await getTransactionAtIndex(blockNumber, expectedTxIndex);
+    const result = await getTransactionAtIndex(blockNumber, expectedTxIndex, provider);
     
     if (!expectedTxHash) {
       throw new Error('Expected transaction hash is empty');
@@ -153,10 +284,10 @@ export const checkTransactionInclusion = async (blockNumber, expectedTxHash, exp
   }
 };
 
-export const getCurrentBlock = async () => {
+export const getCurrentBlock = async (provider) => {
   try {
-    const provider = getMainnetProvider();
-    return await provider.getBlockNumber();
+    const queryProvider = getQueryProvider(provider);
+    return await queryProvider.getBlockNumber();
   } catch (error) {
     console.error('Error getting current block:', error);
     throw error;

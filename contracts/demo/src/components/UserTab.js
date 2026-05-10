@@ -1,15 +1,14 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ethers } from 'ethers';
 import { CONTRACTS, SLASHER_ABI } from '../contracts';
 import { 
-  signCommitment, 
   verifyCommitmentSignature, 
   formatCommitmentForDisplay, 
   parseCommitmentFromJSON 
 } from '../utils/eip712';
 import { 
   checkTransactionInclusion, 
-  getCurrentBlock,
+  getFinalizedMinusTwoFirstTransaction,
   validateTransactionHash,
   validateBlockNumber,
   validateTransactionIndex
@@ -25,11 +24,13 @@ import {
 const UserTab = ({ wallet }) => {
   // Request Preconfirmation State
   const [requestForm, setRequestForm] = useState({
-    proposerAddress: '',
     blockNumber: '',
     transactionHash: '',
     transactionIndex: ''
   });
+  const [suggestedTarget, setSuggestedTarget] = useState(null);
+  const [selectedCaseId, setSelectedCaseId] = useState('');
+  const [targetLoading, setTargetLoading] = useState(false);
   const [currentCommitment, setCurrentCommitment] = useState(null);
   const [currentSignature, setCurrentSignature] = useState(null);
 
@@ -60,6 +61,10 @@ const UserTab = ({ wallet }) => {
 
   const networkName = wallet.getNetworkName();
   const slasherAddress = CONTRACTS[networkName]?.SLASHER;
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+  const selectedCommitmentCase = suggestedTarget?.commitmentCases?.find(
+    (commitmentCase) => commitmentCase.id === selectedCaseId
+  );
 
   const clearMessages = () => {
     setError('');
@@ -111,20 +116,61 @@ const UserTab = ({ wallet }) => {
     return cleaned.trim();
   };
 
-  const handleRequestFormChange = (field, value) => {
-    setRequestForm(prev => ({ ...prev, [field]: value }));
-  };
-
   const handleVerifyFormChange = (field, value) => {
     setVerifyForm(prev => ({ ...prev, [field]: value }));
   };
 
-  const validateRequestForm = () => {
-    const { proposerAddress, blockNumber, transactionHash, transactionIndex } = requestForm;
-
-    if (!proposerAddress || !proposerAddress.startsWith('0x') || proposerAddress.length !== 42) {
-      throw new Error('Invalid proposer address');
+  const loadSuggestedTarget = useCallback(async () => {
+    if (!wallet.isConnected || !wallet.provider) {
+      setSuggestedTarget(null);
+      setSelectedCaseId('');
+      setRequestForm({
+        blockNumber: '',
+        transactionHash: '',
+        transactionIndex: ''
+      });
+      return;
     }
+
+    try {
+      setTargetLoading(true);
+      clearMessages();
+      const target = await getFinalizedMinusTwoFirstTransaction(wallet.provider);
+      setSuggestedTarget(target);
+      setSelectedCaseId('');
+    } catch (err) {
+      console.error('Suggested target load error:', err);
+      setSuggestedTarget(null);
+      setSelectedCaseId('');
+      setError(`Failed to load a recent finalized transaction: ${err.message}`);
+    } finally {
+      setTargetLoading(false);
+    }
+  }, [wallet.isConnected, wallet.provider]);
+
+  useEffect(() => {
+    loadSuggestedTarget();
+  }, [loadSuggestedTarget]);
+
+  useEffect(() => {
+    if (!selectedCommitmentCase) {
+      setRequestForm({
+        blockNumber: '',
+        transactionHash: '',
+        transactionIndex: ''
+      });
+      return;
+    }
+
+    setRequestForm({
+      blockNumber: selectedCommitmentCase.blockNumber.toString(),
+      transactionHash: selectedCommitmentCase.transactionHash,
+      transactionIndex: selectedCommitmentCase.transactionIndex.toString()
+    });
+  }, [selectedCommitmentCase]);
+
+  const validateRequestForm = () => {
+    const { blockNumber, transactionHash, transactionIndex } = requestForm;
 
     if (!validateBlockNumber(blockNumber)) {
       throw new Error('Invalid block number');
@@ -149,7 +195,14 @@ const UserTab = ({ wallet }) => {
       setLoading(true);
       clearMessages();
 
+      if (!selectedCommitmentCase) {
+        throw new Error('Choose a commitment case first');
+      }
+
       validateRequestForm();
+      if (!slasherAddress) {
+        throw new Error(`Slasher contract is not deployed on ${networkName}`);
+      }
 
       const commitment = {
         blockNumber: BigInt(requestForm.blockNumber),
@@ -157,19 +210,33 @@ const UserTab = ({ wallet }) => {
         transactionIndex: BigInt(requestForm.transactionIndex)
       };
 
-      // Note: In a real app, you would send this to the proposer to sign
-      // For demo purposes, we'll have the connected wallet sign it
-      // Use the current network's chainId for signing (proposer signs on their connected network)
-      const signResult = await signCommitment(
-        wallet.signer, 
-        commitment, 
-        wallet.chainId, 
-        slasherAddress
-      );
+      const response = await fetch(`${backendUrl}/api/proposer/sign-commitment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chainId: wallet.chainId,
+          verifyingContract: slasherAddress,
+          commitment: formatCommitmentForDisplay(commitment)
+        })
+      });
+      const signResult = await response.json();
+      if (!response.ok) {
+        throw new Error(signResult.error || 'Proposer failed to sign commitment');
+      }
+
+      const commitmentJSON = JSON.stringify(formatCommitmentForDisplay(commitment), null, 2);
 
       setCurrentCommitment(commitment);
       setCurrentSignature(signResult);
-      setSuccess('Preconfirmation request created and signed!');
+      setVerifyForm({
+        commitmentJSON,
+        signature: signResult.signature,
+        proposerAddress: signResult.proposerAddress
+      });
+      setVerificationResult(null);
+      setInclusionResult(null);
+      setSlashingProof(null);
+      setSuccess(`Proposer commitment received for ${selectedCommitmentCase.label} and verification form populated.`);
 
     } catch (err) {
       console.error('Request creation error:', err);
@@ -234,17 +301,24 @@ const UserTab = ({ wallet }) => {
       const result = await checkTransactionInclusion(
         Number(commitment.blockNumber),
         commitment.transactionHash,
-        Number(commitment.transactionIndex)
+        Number(commitment.transactionIndex),
+        wallet.provider
       );
 
-      setInclusionResult(result);
+      const resultWithNetwork = {
+        ...result,
+        chainId: wallet.chainId,
+        networkName
+      };
 
-      if (result.isIncluded) {
+      setInclusionResult(resultWithNetwork);
+
+      if (resultWithNetwork.isIncluded) {
         setSuccess('✅ Transaction was included at the promised position! Proposer fulfilled commitment.');
       } else {
         // Display specific violation message based on the type
-        let violationDetails = result.violationMessage || 'Transaction was NOT included at the promised position!';
-        const slashabilityMessage = isSlashableViolationType(result.violationType)
+        let violationDetails = resultWithNetwork.violationMessage || 'Transaction was NOT included at the promised position!';
+        const slashabilityMessage = isSlashableViolationType(resultWithNetwork.violationType)
           ? 'This exact-position violation is slashable in this demo.'
           : 'This demo detects this violation type but cannot currently slash it.';
         setError(`❌ Commitment Violation Detected: ${violationDetails} ${slashabilityMessage}`);
@@ -255,15 +329,6 @@ const UserTab = ({ wallet }) => {
       setError(`Failed to check inclusion: ${err.message}`);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fillCurrentBlock = async () => {
-    try {
-      const currentBlock = await getCurrentBlock();
-      setRequestForm(prev => ({ ...prev, blockNumber: currentBlock.toString() }));
-    } catch (err) {
-      setError('Failed to get current block number');
     }
   };
 
@@ -412,68 +477,102 @@ const UserTab = ({ wallet }) => {
 
   return (
     <div>
+      {wallet.isConnected ? (
+        <div className="contract-info">
+          <div><strong>User Wallet:</strong> <span className="contract-address">{wallet.account}</span></div>
+          <div><strong>Connected Network:</strong> {networkName}</div>
+        </div>
+      ) : (
+        <div className="warning">
+          Connect a wallet to request and verify commitments on a network.
+        </div>
+      )}
 
       {/* Request Preconfirmation */}
       <div className="section">
         <h3>1. Request Preconfirmation</h3>
-        <p>Fill in the transaction details and request a preconfirmation from a proposer.</p>
-        
-        <div className="form-group">
-          <label>Proposer Address:</label>
-          <input
-            type="text"
-            className="form-control"
-            value={requestForm.proposerAddress}
-            onChange={(e) => handleRequestFormChange('proposerAddress', e.target.value)}
-            placeholder="0x..."
-          />
+        <p>
+          {suggestedTarget
+            ? `Choose a commitment case from block ${suggestedTarget.blockNumber}. This block was chosen from the most recent finalized range on the connected network.`
+            : 'Load a recently finalized block from the connected network.'}
+        </p>
+
+        <div className="status-card">
+          <h4>Suggested Commitment Target</h4>
+          {targetLoading ? (
+            <div>Loading a recently finalized transaction...</div>
+          ) : suggestedTarget ? (
+            <div className="info-grid">
+              <div className="info-item">
+                <strong>Finalized Block:</strong> {suggestedTarget.finalizedBlockNumber}
+              </div>
+              <div className="info-item">
+                <strong>Target Block:</strong> {suggestedTarget.blockNumber}
+              </div>
+              <div className="info-item">
+                <strong>Default Transaction Index:</strong> {suggestedTarget.transactionIndex}
+              </div>
+              <div className="info-item">
+                <strong>Transactions In Block:</strong> {suggestedTarget.transactionCount}
+              </div>
+              <div className="info-item">
+                <strong>Transaction Hash:</strong><br/>
+                <code>{suggestedTarget.transactionHash}</code>
+              </div>
+              <div className="info-item">
+                <strong>Block Hash:</strong><br/>
+                <code>{suggestedTarget.blockHash}</code>
+              </div>
+            </div>
+          ) : (
+            <div className="warning">
+              No suggested target loaded for the connected network.
+            </div>
+          )}
+
+          <button
+            className="btn btn-warning"
+            onClick={loadSuggestedTarget}
+            disabled={targetLoading || !wallet.isConnected}
+          >
+            {targetLoading ? 'Refreshing...' : 'Refresh Target'}
+          </button>
         </div>
 
-        <div className="form-group">
-          <label>Block Number:</label>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input
-              type="number"
-              className="form-control"
-              value={requestForm.blockNumber}
-              onChange={(e) => handleRequestFormChange('blockNumber', e.target.value)}
-              placeholder="Block number"
-              style={{ flex: 1 }}
-            />
-            <button className="btn btn-primary" onClick={fillCurrentBlock}>
-              Use Current Block
-            </button>
+        {suggestedTarget?.commitmentCases?.length > 0 && (
+          <div className="status-card">
+            <h4>Choose Commitment Case</h4>
+            <div className="case-grid">
+              {suggestedTarget.commitmentCases.map((commitmentCase) => (
+                <button
+                  key={commitmentCase.id}
+                  type="button"
+                  className={`case-card case-card-${commitmentCase.tone} ${selectedCaseId === commitmentCase.id ? 'case-card-selected' : ''}`}
+                  onClick={() => {
+                    setSelectedCaseId(commitmentCase.id);
+                    setCurrentCommitment(null);
+                    setCurrentSignature(null);
+                    setVerificationResult(null);
+                    setInclusionResult(null);
+                    setSlashingProof(null);
+                    clearMessages();
+                  }}
+                >
+                  <span className="case-title">{commitmentCase.label}</span>
+                  <span className="case-outcome">{commitmentCase.outcome}</span>
+                  <span className="case-description">{commitmentCase.description}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div className="form-group">
-          <label>Transaction Hash:</label>
-          <input
-            type="text"
-            className="form-control"
-            value={requestForm.transactionHash}
-            onChange={(e) => handleRequestFormChange('transactionHash', e.target.value)}
-            placeholder="0x..."
-          />
-        </div>
-
-        <div className="form-group">
-          <label>Transaction Index:</label>
-          <input
-            type="number"
-            className="form-control"
-            value={requestForm.transactionIndex}
-            onChange={(e) => handleRequestFormChange('transactionIndex', e.target.value)}
-            placeholder="0"
-          />
-        </div>
+        )}
 
         <button
           className="btn btn-primary"
           onClick={createPreconfirmationRequest}
-          disabled={loading}
+          disabled={loading || targetLoading || !wallet.isConnected || !selectedCommitmentCase}
         >
-          {loading ? 'Creating Request...' : 'Create & Sign Request'}
+          {loading ? 'Requesting Commitment...' : 'Request Proposer Commitment'}
         </button>
 
         {/* Display Current Commitment */}
@@ -486,6 +585,7 @@ const UserTab = ({ wallet }) => {
             
             {currentSignature && (
               <div className="signature-display">
+                <strong>Proposer:</strong> {currentSignature.proposerAddress}<br/>
                 <strong>Signature:</strong> {currentSignature.signature}
               </div>
             )}
@@ -748,9 +848,13 @@ const UserTab = ({ wallet }) => {
                     </div>
                   )}
                   
-                  {success && (success.includes('Slashing successful') || success.includes('slashed')) && (
+                  {success && (
                     <div className="alert alert-success" style={{ marginTop: '10px' }}>
-                      <strong>🎉 Slashing Successful:</strong> {success}
+                      <strong>
+                        {success.includes('Slashing successful') || success.includes('slashed')
+                          ? '🎉 Slashing Successful:'
+                          : 'Slashing Progress:'}
+                      </strong> {success}
                     </div>
                   )}
 

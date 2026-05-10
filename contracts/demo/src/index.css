@@ -249,6 +249,86 @@ code {
   color: #495057;
 }
 
+.case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.case-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-height: 170px;
+  padding: 14px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #212529;
+  cursor: pointer;
+  text-align: left;
+}
+
+.case-card:hover {
+  border-color: #007bff;
+}
+
+.case-card-success {
+  border-color: #b7dfc2;
+  background: #f3fbf5;
+}
+
+.case-card-danger {
+  border-color: #f1b8be;
+  background: #fff5f6;
+}
+
+.case-card-selected {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0,123,255,.18);
+}
+
+.case-card-success.case-card-selected {
+  border-color: #28a745;
+  box-shadow: 0 0 0 0.2rem rgba(40,167,69,.2);
+}
+
+.case-card-danger.case-card-selected {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.2rem rgba(220,53,69,.18);
+}
+
+.case-title {
+  font-weight: 700;
+  color: #343a40;
+}
+
+.case-outcome {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: #e9ecef;
+  font-size: 12px;
+  font-weight: 700;
+  color: #495057;
+}
+
+.case-card-success .case-outcome {
+  background: #d4edda;
+  color: #155724;
+}
+
+.case-card-danger .case-outcome {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.case-description {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .commitment-display {
   background: #f8f9fa;
   padding: 20px;

@@ -70,7 +70,8 @@ export const generateSlashingProof = async (inclusionResult, commitment) => {
     const canUseRealProof = !isAbsenceViolation && (
       blockNumber === PROOF_FIXTURE.blockNumber &&
       transactionIndex === PROOF_FIXTURE.transactionIndex &&
-      actualTxHash.toLowerCase() === PROOF_FIXTURE.transactionHash.toLowerCase()
+      actualTxHash.toLowerCase() === PROOF_FIXTURE.transactionHash.toLowerCase() &&
+      commitment.transactionHash.toLowerCase() === PROOF_FIXTURE.committedTransactionHash.toLowerCase()
     );
 
     if (canUseRealProof) {
@@ -100,7 +101,7 @@ export const generateSlashingProof = async (inclusionResult, commitment) => {
       console.log('Attempting real-time proof generation via Succinct network...');
       
       try {
-        const realTimeProof = await generateRealTimeProof(inclusionResult);
+        const realTimeProof = await generateRealTimeProof(inclusionResult, commitment);
         console.log('Successfully generated real-time proof!');
         return realTimeProof;
       } catch (realTimeError) {
@@ -119,7 +120,7 @@ export const generateSlashingProof = async (inclusionResult, commitment) => {
 };
 
 // Generate a real-time proof using the backend service
-export const generateRealTimeProof = async (inclusionResult) => {
+export const generateRealTimeProof = async (inclusionResult, commitment) => {
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
   
   try {
@@ -141,8 +142,10 @@ export const generateRealTimeProof = async (inclusionResult) => {
       body: JSON.stringify({
         blockNumber: inclusionResult.blockNumber,
         transactionHash: inclusionResult.actualTransactionHash,
+        committedTransactionHash: commitment?.transactionHash,
         transactionIndex: inclusionResult.transactionIndex,
         violationType: inclusionResult.violationType,
+        chainId: inclusionResult.chainId,
         proofSystem: 'groth16'
       }),
     });

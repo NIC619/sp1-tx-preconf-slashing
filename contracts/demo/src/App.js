@@ -42,12 +42,11 @@ function App() {
           <div>
             {wallet.isConnected ? (
               <span className="wallet-connected">
-                🟢 Connected: {wallet.account?.slice(0, 6)}...{wallet.account?.slice(-4)}
-                {wallet.chainId && getNetworkBadge()}
+                Network: {wallet.chainId && getNetworkBadge()}
               </span>
             ) : (
               <span className="wallet-disconnected">
-                🔴 Wallet not connected
+                Wallet not connected
               </span>
             )}
           </div>
@@ -95,9 +94,9 @@ function App() {
         <div className="contract-info">
           <strong>Important:</strong> 
           <ul style={{ margin: '10px 0', paddingLeft: '20px' }}>
-            <li><strong>Proposer Tab:</strong> Manages bonds on {wallet.getNetworkName()} network (slasher contract)</li>
-            <li><strong>User Tab:</strong> Commitments are always for Mainnet transactions (regardless of current network)</li>
-            <li><strong>Block Queries:</strong> Always query Mainnet for transaction inclusion verification</li>
+            <li><strong>Proposer Tab:</strong> Manages the configured proposer on {wallet.getNetworkName()} network</li>
+            <li><strong>User Tab:</strong> Shows the connected user wallet and requests proposer commitments</li>
+            <li><strong>Block Queries:</strong> Query the connected network for transaction inclusion verification</li>
           </ul>
         </div>
       )}
@@ -124,10 +123,10 @@ function App() {
       <div style={{ marginTop: '40px', padding: '20px', background: '#f8f9fa', borderRadius: '10px', fontSize: '14px', color: '#6c757d' }}>
         <h4 style={{ marginTop: 0, color: '#495057' }}>How it works:</h4>
         <ol style={{ paddingLeft: '20px' }}>
-          <li><strong>Proposer Tab:</strong> Block proposers deposit bonds and manage withdrawals on the slasher contract</li>
-          <li><strong>User Tab - Request:</strong> Users request preconfirmations by having proposers sign EIP-712 commitments</li>
+          <li><strong>Proposer Tab:</strong> The configured proposer deposits bonds and manages withdrawals on the slasher contract</li>
+          <li><strong>User Tab - Request:</strong> Users choose a recent finalized-block case and request a proposer commitment</li>
           <li><strong>User Tab - Verify:</strong> Verify the authenticity of signed commitments using EIP-712 signature verification</li>
-          <li><strong>User Tab - Check:</strong> Query Ethereum mainnet to verify if transactions were included at promised positions</li>
+          <li><strong>User Tab - Check:</strong> Query the connected network to verify if transactions were included at promised positions</li>
           <li><strong>Slashing:</strong> If proposers break commitments, their bonds can be slashed as punishment</li>
         </ol>
         

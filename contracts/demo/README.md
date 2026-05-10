@@ -13,15 +13,15 @@ A React-based web application demonstrating the complete flow of the TxInclusion
 ### User Tab
 1. **Request Preconfirmation**: Create structured commitment requests with EIP-712 signatures
 2. **Verify Commitments**: Validate the authenticity of proposer signatures
-3. **Check Inclusion**: Query Ethereum mainnet to verify transaction inclusion at promised positions
+3. **Check Inclusion**: Query the connected network to verify transaction inclusion at promised positions
 4. **Slash Detection**: Identify commitment violations and prepare for slashing
 
 ## Architecture
 
 ### Networks
 - **Proposer Operations**: Executed on the network where slasher contract is deployed (Sepolia for testing)
-- **Commitment Verification**: Always references Ethereum mainnet transactions
-- **Block Queries**: Uses Ethereum mainnet RPC for transaction inclusion verification
+- **Commitment Verification**: References transactions on the connected wallet network
+- **Block Queries**: Uses the connected wallet network for transaction inclusion verification
 
 ### Key Components
 - **Wallet Integration**: MetaMask connection with network switching
@@ -35,11 +35,12 @@ A React-based web application demonstrating the complete flow of the TxInclusion
 - Node.js 16+
 - MetaMask browser extension
 - Access to Sepolia testnet ETH (for testing)
+- `PROPOSER_PRIVATE_KEY` in the repository root `.env` for backend proposer signing and bond operations
 
 ### Installation
 
 ```bash
-# Install dependencies
+# Install frontend dependencies
 npm install
 
 # Start development server
@@ -47,6 +48,16 @@ npm start
 ```
 
 The application will be available at `http://localhost:3000`
+
+Start the backend in a separate terminal:
+
+```bash
+cd backend
+npm install
+npm start
+```
+
+The backend reads `PROPOSER_PRIVATE_KEY` and `NETWORK_PRIVATE_KEY` from the repository root `.env` file.
 
 ### Configuration
 
@@ -85,8 +96,9 @@ export const CONTRACTS = {
 ### For Users
 
 1. **Request Preconfirmation**: 
-   - Set the target block, transaction hash, and exact transaction index
-   - Generate EIP-712 signature (in production, proposer would sign)
+   - Load a recent finalized block from the connected network
+   - Choose whether the proposer should sign a fulfilled commitment, a different-transaction violation, or a no-transaction-at-position violation
+   - Request an EIP-712 signature from the backend proposer configured with `PROPOSER_PRIVATE_KEY`
 
 2. **Verify Commitment**:
    - Paste commitment JSON and signature
@@ -94,7 +106,7 @@ export const CONTRACTS = {
    - Validate commitment parameters
 
 3. **Check Inclusion**:
-   - Query Ethereum mainnet for actual transaction at specified position
+   - Query the connected network for actual transaction at specified position
    - Compare with promised transaction hash
    - Detect commitment violations
 
@@ -146,18 +158,18 @@ valid slash proofs for a fixed 1-day slashing window after that timestamp.
 
 ### Network Handling
 - **Slasher Operations**: Current network (Sepolia for testing)
-- **Commitment Data**: Always Ethereum mainnet
+- **Commitment Data**: Connected wallet network
 - **EIP-712 Signatures**: Use the network chainId where proposer is connected (e.g., Sepolia)
 - **RPC Endpoints**: 
   - Mainnet: `https://ethereum-rpc.publicnode.com`
   - Sepolia: `https://ethereum-sepolia-rpc.publicnode.com`
 
-**⚠️ Important Caveat**: In this demo, commitments reference mainnet transactions but proposers sign with their connected network's chainId (e.g., Sepolia). This means:
-- Commitment data includes mainnet block numbers and transaction hashes
-- EIP-712 signatures include Sepolia's chainId (11155111) in the domain separator
+**Important Caveat**: In this demo, the backend proposer signs commitments with `PROPOSER_PRIVATE_KEY` for the connected network. This means:
+- Commitment data includes block numbers and transaction hashes from the connected network
+- EIP-712 signatures include the connected chainId in the domain separator
 - Signature verification must use the same chainId as signing (Sepolia)
 - This is a demo-specific implementation - production deployments should align chainIds
-- The signature does not prove the signer was the canonical proposer/builder for the referenced mainnet block
+- The signature does not prove the signer was the canonical proposer/builder for the referenced block
 
 ## Development
 
@@ -184,7 +196,7 @@ Creates optimized build in `build/` directory suitable for deployment.
 - Proposer signature simulation (real proposers would sign independently)
 - Slashing requires manual ZK proof generation
 - Limited to basic contract interactions
-- Cross-network signing: commitments reference mainnet but signatures use Sepolia chainId
+- Demo proposer key is configured in the backend environment
 
 ### Production Enhancements
 - Automated ZK proof generation for slashing

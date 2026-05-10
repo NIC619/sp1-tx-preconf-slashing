@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ethers } from 'ethers';
-import { CONTRACTS, SLASHER_ABI } from '../contracts';
+import { CONTRACTS } from '../contracts';
 
 const ProposerTab = ({ wallet }) => {
   const [bondAmount, setBondAmount] = useState('0.1');
   const [withdrawalAmount, setWithdrawalAmount] = useState('');
   const [proposerInfo, setProposerInfo] = useState({
+    address: '',
+    balance: '0',
     currentBond: '0',
     pendingWithdrawal: '0',
     withdrawalTimestamp: '0',
@@ -22,60 +23,47 @@ const ProposerTab = ({ wallet }) => {
 
   const networkName = wallet.getNetworkName();
   const slasherAddress = CONTRACTS[networkName]?.SLASHER;
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
 
   const clearMessages = () => {
     setError('');
     setSuccess('');
   };
 
-  const getSlasherContract = useCallback(() => {
-    if (!wallet.signer || !slasherAddress) return null;
-    return new ethers.Contract(slasherAddress, SLASHER_ABI, wallet.signer);
-  }, [wallet.signer, slasherAddress]);
-
   const loadProposerInfo = useCallback(async () => {
-    if (!wallet.account || !wallet.provider || !slasherAddress) return;
+    if (!wallet.chainId || !slasherAddress) return;
 
     try {
-      const contract = new ethers.Contract(slasherAddress, SLASHER_ABI, wallet.provider);
-      
-      const [
-        currentBond,
-        pendingWithdrawal,
-        withdrawalTimestamp,
-        minBondAmount,
-        slashAmount,
-        withdrawalDelay
-      ] = await Promise.all([
-        contract.getProposerBond(wallet.account),
-        contract.getPendingWithdrawal(wallet.account),
-        contract.getWithdrawalTimestamp(wallet.account),
-        contract.MIN_BOND_AMOUNT(),
-        contract.SLASH_AMOUNT(),
-        contract.WITHDRAWAL_DELAY()
-      ]);
-
-      const now = Math.floor(Date.now() / 1000);
-      const canWithdraw = withdrawalTimestamp > 0 && now >= withdrawalTimestamp;
+      const params = new URLSearchParams({
+        chainId: wallet.chainId,
+        slasherAddress
+      });
+      const response = await fetch(`${backendUrl}/api/proposer/status?${params.toString()}`);
+      const result = await response.json();
+      if (!response.ok || !result.configured) {
+        throw new Error(result.error || 'Failed to load proposer status');
+      }
 
       setProposerInfo({
-        currentBond: ethers.formatEther(currentBond),
-        pendingWithdrawal: ethers.formatEther(pendingWithdrawal),
-        withdrawalTimestamp: withdrawalTimestamp.toString(),
-        canWithdraw
+        address: result.address,
+        balance: result.balance,
+        currentBond: result.currentBond,
+        pendingWithdrawal: result.pendingWithdrawal,
+        withdrawalTimestamp: result.withdrawalTimestamp,
+        canWithdraw: result.canWithdraw
       });
 
       setConstants({
-        minBondAmount: ethers.formatEther(minBondAmount),
-        slashAmount: ethers.formatEther(slashAmount),
-        withdrawalDelay: withdrawalDelay.toString()
+        minBondAmount: result.minBondAmount,
+        slashAmount: result.slashAmount,
+        withdrawalDelay: result.withdrawalDelay
       });
 
     } catch (err) {
       console.error('Error loading proposer info:', err);
-      setError('Failed to load proposer information');
+      setError(err.message);
     }
-  }, [wallet.account, wallet.provider, slasherAddress]);
+  }, [wallet.chainId, slasherAddress, backendUrl]);
 
   useEffect(() => {
     loadProposerInfo();
@@ -87,9 +75,8 @@ const ProposerTab = ({ wallet }) => {
       return;
     }
 
-    const contract = getSlasherContract();
-    if (!contract) {
-      setError('Contract not available');
+    if (!wallet.chainId || !slasherAddress) {
+      setError('Connect a supported network before adding a proposer bond');
       return;
     }
 
@@ -97,13 +84,21 @@ const ProposerTab = ({ wallet }) => {
       setLoading(true);
       clearMessages();
 
-      const value = ethers.parseEther(bondAmount);
-      const tx = await contract.addBond({ value });
+      const response = await fetch(`${backendUrl}/api/proposer/add-bond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chainId: wallet.chainId,
+          slasherAddress,
+          amountEth: bondAmount
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to add bond');
+      }
       
-      setSuccess('Transaction submitted. Waiting for confirmation...');
-      await tx.wait();
-      
-      setSuccess('Bond added successfully!');
+      setSuccess(`Bond added successfully. Transaction: ${result.hash}`);
       setBondAmount('0.1');
       await loadProposerInfo();
       
@@ -121,9 +116,8 @@ const ProposerTab = ({ wallet }) => {
       return;
     }
 
-    const contract = getSlasherContract();
-    if (!contract) {
-      setError('Contract not available');
+    if (!wallet.chainId || !slasherAddress) {
+      setError('Connect a supported network before initiating withdrawal');
       return;
     }
 
@@ -131,13 +125,21 @@ const ProposerTab = ({ wallet }) => {
       setLoading(true);
       clearMessages();
 
-      const amount = ethers.parseEther(withdrawalAmount);
-      const tx = await contract.initiateWithdrawal(amount);
+      const response = await fetch(`${backendUrl}/api/proposer/initiate-withdrawal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chainId: wallet.chainId,
+          slasherAddress,
+          amountEth: withdrawalAmount
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to initiate withdrawal');
+      }
       
-      setSuccess('Transaction submitted. Waiting for confirmation...');
-      await tx.wait();
-      
-      setSuccess('Withdrawal initiated successfully! You can complete it after the delay period.');
+      setSuccess(`Withdrawal initiated successfully. Transaction: ${result.hash}`);
       setWithdrawalAmount('');
       await loadProposerInfo();
       
@@ -150,9 +152,8 @@ const ProposerTab = ({ wallet }) => {
   };
 
   const handleCompleteWithdrawal = async () => {
-    const contract = getSlasherContract();
-    if (!contract) {
-      setError('Contract not available');
+    if (!wallet.chainId || !slasherAddress) {
+      setError('Connect a supported network before completing withdrawal');
       return;
     }
 
@@ -160,12 +161,20 @@ const ProposerTab = ({ wallet }) => {
       setLoading(true);
       clearMessages();
 
-      const tx = await contract.completeWithdrawal();
+      const response = await fetch(`${backendUrl}/api/proposer/complete-withdrawal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chainId: wallet.chainId,
+          slasherAddress
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to complete withdrawal');
+      }
       
-      setSuccess('Transaction submitted. Waiting for confirmation...');
-      await tx.wait();
-      
-      setSuccess('Withdrawal completed successfully!');
+      setSuccess(`Withdrawal completed successfully. Transaction: ${result.hash}`);
       await loadProposerInfo();
       
     } catch (err) {
@@ -189,7 +198,7 @@ const ProposerTab = ({ wallet }) => {
   if (!wallet.isConnected) {
     return (
       <div className="warning">
-        Please connect your wallet to manage proposer bonds.
+        Connect a wallet to select the network for proposer bond operations.
       </div>
     );
   }
@@ -215,8 +224,11 @@ const ProposerTab = ({ wallet }) => {
         <div><strong>Slasher Contract:</strong> 
           <span className="contract-address"> {slasherAddress}</span>
         </div>
-        <div><strong>Your Address:</strong> 
-          <span className="contract-address"> {wallet.account}</span>
+        <div><strong>Proposer Address:</strong> 
+          <span className="contract-address"> {proposerInfo.address || 'Not configured'}</span>
+        </div>
+        <div><strong>Proposer Wallet Balance:</strong> 
+          <span> {proposerInfo.balance} ETH</span>
         </div>
       </div>
 
@@ -241,7 +253,7 @@ const ProposerTab = ({ wallet }) => {
 
       {/* Current Status */}
       <div className="section">
-        <h3>Your Bond Status</h3>
+        <h3>Proposer Bond Status</h3>
         <div className="info-grid">
           <div className="info-item">
             <strong>Current Bond:</strong> {proposerInfo.currentBond} ETH
@@ -311,10 +323,10 @@ const ProposerTab = ({ wallet }) => {
         {/* Complete Withdrawal */}
         {proposerInfo.pendingWithdrawal !== '0' && (
           <div style={{marginTop: '20px'}}>
-            <div className="warning">
-              You have {proposerInfo.pendingWithdrawal} ETH pending withdrawal.
+              <div className="warning">
+              Proposer has {proposerInfo.pendingWithdrawal} ETH pending withdrawal.
               {proposerInfo.canWithdraw ? 
-                ' You can complete the withdrawal now.' : 
+                ' The withdrawal can be completed now.' : 
                 ' Wait until the delay period expires.'
               }
             </div>
