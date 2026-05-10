@@ -75,8 +75,8 @@ The resulting Sepolia configuration is:
 ```javascript
 export const CONTRACTS = {
   SEPOLIA: {
-    SLASHER: '0xc64E87577AC79EA47CBd372784D48C904bc07ad6',
-    VERIFIER: '0x7e6f831D387Ba9141513711b914bcFC306e853b8',
+    SLASHER: '0x047c9fBa113c14e3F7F987C9D8F29dd3C0160796',
+    VERIFIER: '0xCa1BA4D2630cC7aCa1F7ef463498a83151A56166',
   },
   MAINNET: {
     SLASHER: '', // Deploy when ready
