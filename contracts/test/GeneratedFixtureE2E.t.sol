@@ -14,9 +14,11 @@ import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 struct SP1ProofFixtureJsonE2E {
     bytes32 blockHash;
     uint64 blockNumber;
+    bytes32 committedTransactionHash;
     bool isIncluded;
     bytes proof;
     bytes publicValues;
+    bool transactionCanBeIncluded;
     bytes32 transactionHash;
     uint64 transactionIndex;
     bytes32 verifiedAgainstRoot;
@@ -56,9 +58,11 @@ contract GeneratedFixtureE2ETest is Test {
 
         assertEq(decoded.blockHash, fixture.blockHash);
         assertEq(decoded.blockNumber, fixture.blockNumber);
+        assertEq(decoded.committedTransactionHash, fixture.committedTransactionHash);
         assertEq(decoded.transactionHash, fixture.transactionHash);
         assertEq(decoded.transactionIndex, fixture.transactionIndex);
         assertEq(decoded.isIncluded, fixture.isIncluded);
+        assertEq(decoded.transactionCanBeIncluded, fixture.transactionCanBeIncluded);
         assertEq(decoded.verifiedAgainstRoot, fixture.verifiedAgainstRoot);
     }
 
