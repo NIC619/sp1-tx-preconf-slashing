@@ -65,6 +65,17 @@ const UserTab = ({ wallet }) => {
   const selectedCommitmentCase = suggestedTarget?.commitmentCases?.find(
     (commitmentCase) => commitmentCase.id === selectedCaseId
   );
+  const formatTxHash = (hash) => hash || 'Not found';
+  const formatPosition = (result) => {
+    if (!result) return '';
+    return result.expectedDisplayPosition || result.displayPosition || Number(result.transactionIndex) + 1;
+  };
+  const formatViolationType = (violationType) => {
+    if (violationType === 'INDEX_OUT_OF_RANGE' || violationType === 'NO_TRANSACTION') {
+      return 'NO_TRANSACTION_AT_PROMISED_POSITION';
+    }
+    return violationType || 'UNKNOWN';
+  };
 
   const clearMessages = () => {
     setError('');
@@ -725,10 +736,10 @@ const UserTab = ({ wallet }) => {
               </div>
               <div className="info-item">
                 <strong>Actual Tx Hash:</strong><br/>
-                <code>{inclusionResult.actualTransactionHash}</code>
+                <code>{formatTxHash(inclusionResult.actualTransactionHash)}</code>
               </div>
               <div className="info-item">
-                <strong>Position:</strong> {inclusionResult.transactionIndex}
+                <strong>Promised Position:</strong> {formatPosition(inclusionResult)}
               </div>
               <div className="info-item">
                 <strong>Included:</strong> 
@@ -754,9 +765,9 @@ const UserTab = ({ wallet }) => {
             {!inclusionResult.isIncluded && (
               <div className="error" style={{ marginTop: '15px' }}>
                 <strong>⚠️ Commitment Violation Detected!</strong><br/>
-                {inclusionResult.violationMessage || `Transaction ${inclusionResult.expectedTransactionHash} was not included at position ${inclusionResult.expectedTransactionIndex} in block ${inclusionResult.blockNumber}.`}
+                {inclusionResult.violationMessage || `Transaction ${inclusionResult.expectedTransactionHash} was not included at promised position ${formatPosition(inclusionResult)} in block ${inclusionResult.blockNumber}.`}
                 <br/><br/>
-                <strong>Violation Type:</strong> {inclusionResult.violationType || 'UNKNOWN'}
+                <strong>Violation Type:</strong> {formatViolationType(inclusionResult.violationType)}
                 <br/><br/>
                 {isSlashableViolationType(inclusionResult.violationType)
                   ? 'This exact-position violation is slashable in this demo.'

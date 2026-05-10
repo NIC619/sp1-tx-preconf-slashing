@@ -11,6 +11,8 @@ const toHexBlockNumber = (blockNumber) => {
 
 const getQueryProvider = (provider) => provider || getMainnetProvider();
 
+const getDisplayPosition = (transactionIndex) => Number(transactionIndex) + 1;
+
 const normalizeTransactionDetails = (transactionHashOrObject) => {
   if (!transactionHashOrObject) {
     return { transactionHash: null, transactionDetails: null };
@@ -189,14 +191,17 @@ export const getTransactionAtIndex = async (blockNumber, transactionIndex, provi
 
     // Check if transaction index is out of range
     if (transactionIndex >= block.transactions.length) {
+      const promisedPosition = getDisplayPosition(transactionIndex);
+      const lastPosition = block.transactions.length;
       return {
         blockHash: block.hash,
         blockNumber: block.number,
         transactionHash: null,
         transactionIndex: transactionIndex,
+        displayPosition: promisedPosition,
         transaction: null,
         error: 'INDEX_OUT_OF_RANGE',
-        errorMessage: `No transaction at position ${transactionIndex}. Block has ${block.transactions.length} transactions.`,
+        errorMessage: `No transaction at promised position ${promisedPosition}. Block has ${block.transactions.length} transactions, so the last valid position is ${lastPosition}.`,
         actualTransactionCount: block.transactions.length
       };
     }
@@ -214,6 +219,7 @@ export const getTransactionAtIndex = async (blockNumber, transactionIndex, provi
       blockNumber: block.number,
       transactionHash: transactionHash || null,
       transactionIndex: transactionIndex,
+      displayPosition: getDisplayPosition(transactionIndex),
       transaction: transactionDetails,
       error: null,
       errorMessage: null
@@ -247,6 +253,7 @@ export const checkTransactionInclusion = async (blockNumber, expectedTxHash, exp
         actualTransactionHash: result.transactionHash, // Add this alias for proof generation
         expectedTransactionHash: expectedTxHash,
         expectedTransactionIndex: expectedTxIndex,
+        expectedDisplayPosition: getDisplayPosition(expectedTxIndex),
         isIncluded: false,
         violationType: result.error,
         violationMessage: result.errorMessage
@@ -263,10 +270,10 @@ export const checkTransactionInclusion = async (blockNumber, expectedTxHash, exp
     if (!isIncluded) {
       if (actualTxHash) {
         violationType = 'DIFFERENT_TRANSACTION';
-        violationMessage = `A different transaction (${actualTxHash}) was included at the promised position ${expectedTxIndex}`;
+        violationMessage = `A different transaction (${actualTxHash}) was included at promised position ${getDisplayPosition(expectedTxIndex)}`;
       } else {
         violationType = 'NO_TRANSACTION';
-        violationMessage = `No transaction was included at the promised position ${expectedTxIndex}`;
+        violationMessage = `No transaction was included at promised position ${getDisplayPosition(expectedTxIndex)}`;
       }
     }
     
@@ -275,6 +282,7 @@ export const checkTransactionInclusion = async (blockNumber, expectedTxHash, exp
       actualTransactionHash: result.transactionHash, // Add this alias for proof generation
       expectedTransactionHash: expectedTxHash,
       expectedTransactionIndex: expectedTxIndex,
+      expectedDisplayPosition: getDisplayPosition(expectedTxIndex),
       isIncluded,
       violationType,
       violationMessage
