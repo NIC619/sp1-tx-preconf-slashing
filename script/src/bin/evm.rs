@@ -246,17 +246,35 @@ async fn main() -> Result<()> {
     let mut stdin = SP1Stdin::new();
     stdin.write(&input_bytes);
 
-    let client = ProverClient::from_env().await;
-    let pk = client
-        .setup(TX_INCLUSION_ELF)
-        .await
-        .map_err(|e| eyre::eyre!("Setup failed: {}", e))?;
     println!("Generating Groth16 proof...");
-    let proof = client
-        .prove(&pk, stdin)
-        .groth16()
-        .await
-        .map_err(|e| eyre::eyre!("Proof generation failed: {}", e))?;
+    let (proof, vkey) = if prover_mode == "network" {
+        let client = ProverClient::builder().network().build().await;
+        let pk = client
+            .setup(TX_INCLUSION_ELF)
+            .await
+            .map_err(|e| eyre::eyre!("Setup failed: {}", e))?;
+        let vkey = pk.verifying_key().clone();
+        let proof = client
+            .prove(&pk, stdin)
+            .groth16()
+            .skip_simulation(true)
+            .await
+            .map_err(|e| eyre::eyre!("Proof generation failed: {}", e))?;
+        (proof, vkey)
+    } else {
+        let client = ProverClient::from_env().await;
+        let pk = client
+            .setup(TX_INCLUSION_ELF)
+            .await
+            .map_err(|e| eyre::eyre!("Setup failed: {}", e))?;
+        let vkey = pk.verifying_key().clone();
+        let proof = client
+            .prove(&pk, stdin)
+            .groth16()
+            .await
+            .map_err(|e| eyre::eyre!("Proof generation failed: {}", e))?;
+        (proof, vkey)
+    };
 
     if prover_mode == "network" {
         println!("\n✅ EVM-compatible proof generated successfully using Succinct Prover Network!");
@@ -266,7 +284,7 @@ async fn main() -> Result<()> {
         println!("✅ EVM-compatible proof generated successfully locally!");
     }
 
-    create_proof_fixture(&proof, pk.verifying_key(), args.output_path.as_deref())?;
+    create_proof_fixture(&proof, &vkey, args.output_path.as_deref())?;
 
     Ok(())
 }
