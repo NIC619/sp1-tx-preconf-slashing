@@ -29,16 +29,17 @@ DEPLOYER_PRIVATE_KEY=0x...
 OWNER_PRIVATE_KEY=0x...
 ETHERSCAN_API_KEY=your_api_key_here
 
-# Required for TransactionInclusionVerifier deployment
+# Required for TransactionInclusionVerifier deployment.
+# Sepolia Groth16 verifier gateway; routes v6.1.x proofs with sp1-contracts v6.1.1.
 SP1_VERIFIER_ADDRESS=0x397A5f7f3dBd538f23DE225B51f532c34448dA9B
-TX_INCLUSION_PROGRAM_VKEY=0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
+TX_INCLUSION_PROGRAM_VKEY=0x00ef99aa9ca5343648ec4bf880180e8f9a05d8be759659925cec813035acf507
 ```
 
 **⚠️ Security Note**: Never commit your `.env` file to version control. The `.env` file is already included in `.gitignore` to prevent accidental commits.
 
 ## SP1 Verifier Addresses
 
-- **Sepolia**: `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B`
+- **Sepolia Groth16 gateway**: `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B`
 - **Ethereum Mainnet**: Check [SP1 Contracts Repository](https://github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments)
 
 ## Getting Your Program VKey
@@ -46,7 +47,7 @@ TX_INCLUSION_PROGRAM_VKEY=0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe1
 Your program's verification key is output when you generate proofs. Look for lines like:
 
 ```
-Verification Key: 0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
+Verification Key: 0x00ef99aa9ca5343648ec4bf880180e8f9a05d8be759659925cec813035acf507
 ```
 
 ## Deployment

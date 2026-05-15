@@ -4,11 +4,12 @@ This directory contains different types of proof fixtures for various purposes i
 
 ## Fixture Types
 
-### 🔄 Dynamic Fixtures (Updated by Proof Generation)
+### Dynamic Fixtures (Updated by Proof Generation)
 These fixtures are automatically updated when new proofs are generated and should be used for **real-time proof generation** and **production workflows**:
 
 - **`groth16-fixture.json`** - Latest Groth16 proof from Succinct prover network
-- **`plonk-fixture.json`** - Latest PLONK proof (when available)
+
+PLONK fixtures are intentionally not supported in this repo. The contracts, deployment docs, demo backend, and generated fixture flow are Groth16-only.
 
 **Used by:**
 - Backend service (`contracts/demo/backend/server.js`) for fallback scenarios
@@ -16,11 +17,10 @@ These fixtures are automatically updated when new proofs are generated and shoul
 - Demo UI for real-time proof scenarios
 - Generated-fixture E2E runner (`scripts/run_generated_fixture_e2e.sh`)
 
-### 🧪 Stable Test Fixtures (Never Change)
+### Stable Test Fixtures (Never Change)
 These fixtures contain **fixed values** that never change and should be used for **tests** and **local simulations**:
 
 - **`groth16-fixture-for-tests.json`** - Stable Groth16 proof for consistent testing
-- **`plonk-fixture-for-tests.json`** - Stable PLONK proof for consistent testing
 
 **Used by:**
 - Solidity tests (`contracts/test/TransactionInclusionVerifier.t.sol`)
@@ -44,27 +44,27 @@ These fixtures contain **fixed values** that never change and should be used for
 ## Usage Guidelines
 
 ### For New Tests or Local Simulations
-✅ **DO:** Use `*-for-tests.json` fixtures
+Use the Groth16 test fixture:
 ```solidity
 string memory path = string.concat(root, "/src/fixtures/groth16-fixture-for-tests.json");
 ```
 
-❌ **DON'T:** Use dynamic fixtures in tests
+Do not use dynamic fixtures in tests:
 ```solidity
 // This will break when new proofs are generated
 string memory path = string.concat(root, "/src/fixtures/groth16-fixture.json");
 ```
 
 ### For Production/Real-time Systems
-✅ **DO:** Use dynamic fixtures that get updated
+Use the dynamic Groth16 fixture that gets updated:
 ```javascript
-const fixturePath = path.join(__dirname, '../fixtures', `${proofSystem}-fixture.json`);
+const fixturePath = path.join(__dirname, '../fixtures/groth16-fixture.json');
 ```
 
 ### For End-to-End Fixture Verification
-✅ **DO:** Generate a fresh fixture into a temporary path and point Foundry at it
+Generate a fresh Groth16 fixture into a temporary path and point Foundry at it:
 ```bash
-./scripts/run_generated_fixture_e2e.sh groth16
+./scripts/run_generated_fixture_e2e.sh
 ```
 
 This flow:
@@ -73,7 +73,7 @@ This flow:
 - runs `contracts/test/GeneratedFixtureE2E.t.sol` with `TX_INCLUSION_E2E_FIXTURE_PATH` set to that file
 
 ### For Demo UI
-✅ **DO:** Use hardcoded stable constants
+Use hardcoded stable constants:
 ```javascript
 export const PROOF_FIXTURE = {
   "blockNumber": 23354683,

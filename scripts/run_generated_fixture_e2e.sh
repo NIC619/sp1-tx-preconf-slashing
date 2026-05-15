@@ -3,10 +3,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROOF_SYSTEM="${1:-groth16}"
-if [[ $# -gt 0 ]]; then
+if [[ "${1:-}" == "groth16" ]]; then
   shift
+elif [[ "${1:-}" == "plonk" ]]; then
+  echo "Error: PLONK proofs are not supported by this repo. Use Groth16." >&2
+  exit 1
 fi
+PROOF_SYSTEM="groth16"
 FIXTURE_PATH="${TX_INCLUSION_E2E_FIXTURE_PATH:-$(mktemp "${ROOT_DIR}/contracts/src/fixtures/${PROOF_SYSTEM}-e2e-XXXXXX.json")}"
 SP1_PROVER_MODE="${SP1_PROVER:-cpu}"
 
@@ -27,10 +30,10 @@ Local Groth16 proving uses SP1's Docker/gnark flow.
 
 If you are on Apple Silicon and see an image manifest error for `linux/arm64`, try one of:
   1. Recommended: use the prover network
-     SP1_PROVER=network ./scripts/run_generated_fixture_e2e.sh groth16
+     SP1_PROVER=network ./scripts/run_generated_fixture_e2e.sh
 
   2. Local workaround: force amd64 emulation
-     DOCKER_DEFAULT_PLATFORM=linux/amd64 ./scripts/run_generated_fixture_e2e.sh groth16
+     DOCKER_DEFAULT_PLATFORM=linux/amd64 ./scripts/run_generated_fixture_e2e.sh
 
 If Docker/OrbStack is not running, start it first and confirm with:
   docker info
@@ -43,10 +46,6 @@ preflight_checks() {
       echo "Error: SP1_PROVER=network requires NETWORK_PRIVATE_KEY in the environment." >&2
       exit 1
     fi
-    return
-  fi
-
-  if [[ "${PROOF_SYSTEM}" != "groth16" ]]; then
     return
   fi
 
@@ -77,8 +76,8 @@ Note: you are on Apple Silicon and SP1's `ghcr.io/succinctlabs/sp1-gnark:v6.1.0`
 an arm64 manifest for local Groth16 proving.
 
 If this run fails with a Docker manifest error, retry with one of:
-  SP1_PROVER=network ./scripts/run_generated_fixture_e2e.sh groth16
-  DOCKER_DEFAULT_PLATFORM=linux/amd64 ./scripts/run_generated_fixture_e2e.sh groth16
+  SP1_PROVER=network ./scripts/run_generated_fixture_e2e.sh
+  DOCKER_DEFAULT_PLATFORM=linux/amd64 ./scripts/run_generated_fixture_e2e.sh
 
 Continuing with the current configuration...
 EOF
@@ -99,7 +98,7 @@ pushd "${ROOT_DIR}" >/dev/null
 
 echo "Generating ${PROOF_SYSTEM} fixture at ${FIXTURE_PATH}"
 
-cargo run --release --bin evm -- --system "${PROOF_SYSTEM}" --output-path "${FIXTURE_PATH}" "$@"
+cargo run --release --bin evm -- --output-path "${FIXTURE_PATH}" "$@"
 
 echo "Running Foundry verification against generated fixture"
 

@@ -30,8 +30,9 @@ The Succinct Prover Network is a managed service that provides GPU-accelerated p
 ### Supported Proof Types
 
 - **Groth16**: Fastest verification, commonly used for on-chain verification
-- **PLONK**: Alternative SNARK system with different trade-offs
 - **Compressed**: SP1's native proof format (not EVM-compatible)
+
+This repository supports Groth16 only. Do not generate PLONK fixtures or deploy with a PLONK verifier gateway for this app.
 
 ## Prerequisites
 
@@ -140,22 +141,19 @@ The unified `evm` binary supports live default inputs and dynamic transaction ha
 
 ```bash
 # Live default: finalized - 2, first transaction in the block
-SP1_PROVER=network cargo run --release --bin evm -- --system groth16
+SP1_PROVER=network cargo run --release --bin evm
 
 # Use custom transaction hash
 SP1_PROVER=network cargo run --release --bin evm -- \
-  --system groth16 \
   --transaction-hash 0xd25efc79e658a77d3a136a674c04be15a1d2dfc2a695412028a9e51f5c1ee900
 
 # Use custom RPC and transaction
 SP1_PROVER=network cargo run --release --bin evm -- \
-  --system groth16 \
   --eth-rpc-url https://your-custom-rpc.com \
   --transaction-hash 0xabcd1234...
 
 # Live absence proof: finalized - 2, first index past the block's transaction count
 SP1_PROVER=network cargo run --release --bin evm -- \
-  --system groth16 \
   --absence-past-end
 ```
 
@@ -163,7 +161,6 @@ SP1_PROVER=network cargo run --release --bin evm -- \
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `--system` | Proof system (groth16 or plonk) | groth16 |
 | `--eth-rpc-url` | Ethereum RPC endpoint | https://ethereum-rpc.publicnode.com |
 | `--transaction-hash` | Specific transaction to prove. The script fetches its mined block number and transaction index from RPC. | Live default: `finalized - 2`, index `0` |
 | `--absence-past-end` | Prove no transaction exists at the first index past the selected live block's transaction count. | false |
@@ -173,7 +170,7 @@ SP1_PROVER=network cargo run --release --bin evm -- \
 Backend services should pass custom transactions via `--transaction-hash`:
 
 ```bash
-SP1_PROVER=network cargo run --release --bin evm -- --system groth16 --transaction-hash 0xabcd1234...
+SP1_PROVER=network cargo run --release --bin evm -- --transaction-hash 0xabcd1234...
 ```
 
 ### Integration with Backend Services
@@ -182,7 +179,6 @@ When called from backend services (like the demo UI), the binary accepts the tra
 
 ```javascript
 const args = [
-  '--system', 'groth16',
   '--eth-rpc-url', 'https://ethereum-rpc.publicnode.com',
   '--transaction-hash', transactionHash
 ];
@@ -194,19 +190,10 @@ This enables real-time proof generation for any Ethereum transaction.
 
 ### 1. Basic Proof Generation
 
-**Groth16 (Recommended for EVM):**
+**Groth16:**
 ```rust
 let proof = client.prove(&pk, &stdin)
     .groth16()
-    .strategy(FulfillmentStrategy::Auction)
-    .run_async()
-    .await?;
-```
-
-**PLONK Alternative:**
-```rust
-let proof = client.prove(&pk, &stdin)
-    .plonk()
     .strategy(FulfillmentStrategy::Auction)
     .run_async()
     .await?;
@@ -299,10 +286,9 @@ pub enum FulfillmentStrategy {
 
 | Method | Description | Default | Notes |
 |--------|-------------|---------|-------|
-| `.groth16()` | Use Groth16 proof system | - | Recommended for EVM |
-| `.plonk()` | Use PLONK proof system | - | Alternative to Groth16 |
+| `.groth16()` | Use Groth16 proof system | - | Required for this repo |
 | `.strategy()` | Set fulfillment strategy | Auction | Usually use Auction |
-| `.timeout()` | Set request timeout | 300s | Groth16: 1200s, PLONK: 1800s |
+| `.timeout()` | Set request timeout | 300s | Use a longer timeout for network Groth16 requests if needed |
 | `.max_price_per_pgu()` | Set max price per PGU | 2 PROVE | Market rate limit |
 | `.min_auction_period()` | Minimum auction time | 1s | Allow time for bids |
 | `.skip_simulation()` | Skip local simulation | false | Use with caution |
@@ -329,12 +315,6 @@ ProverClient::builder()
 - **PGU Cost**: Variable based on program complexity
 - **Market Rate**: Auction-based pricing for PGUs
 
-**Proof Type Comparison:**
-```
-Groth16: Generally faster generation, same verification cost
-PLONK:   Alternative system, may have different resource requirements
-```
-
 ### Optimization Strategies
 
 **1. Program Optimization:**
@@ -352,8 +332,8 @@ PLONK:   Alternative system, may have different resource requirements
 
 **3. Proof System Selection:**
 ```rust
-// Groth16 often faster for similar complexity
-.groth16()  // vs .plonk()
+// This repo supports Groth16 only.
+.groth16()
 ```
 
 **4. Batch Operations:**
@@ -374,7 +354,7 @@ println!("Monitor at: https://explorer.mainnet.succinct.xyz/request/{}", request
 **Log Analysis:**
 ```bash
 # Enable verbose logging
-SP1_PROVER=network RUST_LOG=info cargo run --release --bin evm -- --system groth16
+SP1_PROVER=network RUST_LOG=info cargo run --release --bin evm
 ```
 
 **Key Log Information:**
@@ -478,7 +458,7 @@ cargo run --release -- --execute
 cargo run --release -- --prove  
 
 # 3. Generate network EVM proof (final step)
-SP1_PROVER=network cargo run --release --bin evm -- --system groth16
+SP1_PROVER=network cargo run --release --bin evm
 ```
 
 ### 2. Environment Management
@@ -535,12 +515,12 @@ error!("Proof generation failed after {} attempts", max_attempts);
 
 **Before (Local):**
 ```toml
-sp1-sdk = "5.2.1"
+sp1-sdk = "6.1.0"
 ```
 
 **After (Network):**
 ```toml
-sp1-sdk = { version = "5.2.1", default-features = false, features = ["network"] }
+sp1-sdk = { version = "6.1.0", default-features = false, features = ["network"] }
 ```
 
 ### 2. Client Creation Changes
@@ -601,12 +581,12 @@ let proof = if args.use_network {
 
 ### Typical Generation Times
 
-| Program Complexity | Groth16 | PLONK | Notes |
-|-------------------|---------|-------|-------|
-| Simple (< 100K cycles) | 30-60s | 60-120s | Fixed overhead dominates |
-| Medium (100K-1M cycles) | 1-3 min | 2-5 min | Network efficiency shows |
-| Large (1M-10M cycles) | 5-15 min | 10-30 min | Significant speedup vs local |
-| Very Large (10M+ cycles) | 15-60 min | 30-120 min | Professional hardware advantage |
+| Program Complexity | Groth16 | Notes |
+|-------------------|---------|-------|
+| Simple (< 100K cycles) | 30-60s | Fixed overhead dominates |
+| Medium (100K-1M cycles) | 1-3 min | Network efficiency shows |
+| Large (1M-10M cycles) | 5-15 min | Significant speedup vs local |
+| Very Large (10M+ cycles) | 15-60 min | Professional hardware advantage |
 
 ### Resource Usage
 

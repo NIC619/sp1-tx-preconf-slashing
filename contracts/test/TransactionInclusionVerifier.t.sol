@@ -105,10 +105,8 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
         _mockProofVerification(fixture.publicValues, fixture.proof);
 
-        PublicValuesStruct memory publicValues =
-            ITransactionInclusionVerifier(address(txInclusionVerifier)).verifyTransactionInclusionView(
-                fixture.publicValues, fixture.proof
-            );
+        PublicValuesStruct memory publicValues = ITransactionInclusionVerifier(address(txInclusionVerifier))
+            .verifyTransactionInclusionView(fixture.publicValues, fixture.proof);
 
         _assertDecodedValues(fixture, publicValues);
     }
@@ -149,7 +147,12 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
     function _mockProofVerification(bytes memory publicValues, bytes memory proof) internal {
         vm.mockCall(
             verifier,
-            abi.encodeWithSelector(SP1VerifierGateway.verifyProof.selector, txInclusionVerifier.txInclusionProgramVKey(), publicValues, proof),
+            abi.encodeWithSelector(
+                SP1VerifierGateway.verifyProof.selector,
+                txInclusionVerifier.txInclusionProgramVKey(),
+                publicValues,
+                proof
+            ),
             abi.encode()
         );
     }
@@ -193,11 +196,5 @@ abstract contract TransactionInclusionVerifierTestBase is Test {
 contract TransactionInclusionGroth16Test is TransactionInclusionVerifierTestBase {
     function fixturePath() internal pure override returns (string memory) {
         return "/src/fixtures/groth16-fixture-for-tests.json";
-    }
-}
-
-contract TransactionInclusionPlonkTest is TransactionInclusionVerifierTestBase {
-    function fixturePath() internal pure override returns (string memory) {
-        return "/src/fixtures/plonk-fixture-for-tests.json";
     }
 }

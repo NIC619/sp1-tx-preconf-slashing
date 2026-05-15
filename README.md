@@ -98,28 +98,25 @@ The UI is the preferred way to exercise the flow. For lower-level debugging, the
 
 ```sh
 # Inclusion proof for the first transaction in a recent finalized block
-SP1_PROVER=network cargo run --release --bin evm -- --system groth16
+SP1_PROVER=network cargo run --release --bin evm
 
 # Inclusion proof for a specific mined transaction
 SP1_PROVER=network cargo run --release --bin evm -- \
-  --system groth16 \
   --transaction-hash 0x...
 
 # Absence proof for a specific block/index
 SP1_PROVER=network cargo run --release --bin evm -- \
-  --system groth16 \
   --absence-block-number 123 \
   --absence-transaction-index 456 \
   --transaction-hash 0x...
 
 # Different-transaction proof: prove the actual tx at the index while binding a separate committed tx
 SP1_PROVER=network cargo run --release --bin evm -- \
-  --system groth16 \
   --transaction-hash 0xACTUAL_TX_AT_POSITION \
   --committed-transaction-hash 0xCOMMITTED_TX
 ```
 
-Generated fixtures are written under `contracts/src/fixtures/`.
+Generated Groth16 fixtures are written under `contracts/src/fixtures/`. PLONK is not supported by this repo.
 
 ## Notes
 

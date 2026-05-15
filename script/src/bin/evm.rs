@@ -3,11 +3,7 @@
 //!
 //! You can run this script using the following command:
 //! ```shell
-//! RUST_LOG=info cargo run --release --bin evm -- --system groth16
-//! ```
-//! or
-//! ```shell
-//! RUST_LOG=info cargo run --release --bin evm -- --system plonk
+//! RUST_LOG=info cargo run --release --bin evm
 //! ```
 //!
 //! To use the Succinct Prover Network, set `SP1_PROVER=network` and provide
@@ -17,7 +13,7 @@ use alloy::network::Ethereum;
 use alloy::primitives::Bytes;
 use alloy::providers::{Provider, RootProvider};
 use alloy_rpc_types::BlockId;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use eyre::Result;
 use sp1_sdk::{include_elf, Elf, ProveRequest, Prover, ProverClient, ProvingKey, SP1Stdin};
 use tx_inclusion_precise_index::{
@@ -40,8 +36,6 @@ pub const TX_INCLUSION_ELF: Elf = include_elf!("tx-inclusion-precise-index-clien
 struct EVMArgs {
     #[arg(long, default_value = "https://ethereum-rpc.publicnode.com")]
     eth_rpc_url: Url,
-    #[arg(long, value_enum, default_value = "groth16")]
-    system: ProofSystem,
     #[arg(long, help = "Optional output path for the generated fixture JSON")]
     output_path: Option<std::path::PathBuf>,
     #[arg(
@@ -71,13 +65,6 @@ struct EVMArgs {
     absence_past_end: bool,
 }
 
-/// Enum representing the available proof systems
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-enum ProofSystem {
-    Plonk,
-    Groth16,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     load_repo_dotenv();
@@ -99,7 +86,7 @@ async fn main() -> Result<()> {
     let provider = RootProvider::<Ethereum>::new_http(args.eth_rpc_url.clone());
 
     println!("Generating EVM-compatible proof for transaction inclusion verification");
-    println!("Proof System: {:?}", args.system);
+    println!("Proof System: Groth16");
     println!("SP1 prover mode: {}", prover_mode);
 
     let input = if args.absence_block_number.is_some()
@@ -264,17 +251,12 @@ async fn main() -> Result<()> {
         .setup(TX_INCLUSION_ELF)
         .await
         .map_err(|e| eyre::eyre!("Setup failed: {}", e))?;
-    let proof = match args.system {
-        ProofSystem::Plonk => {
-            println!("Generating PLONK proof...");
-            client.prove(&pk, stdin).plonk().await
-        }
-        ProofSystem::Groth16 => {
-            println!("Generating Groth16 proof...");
-            client.prove(&pk, stdin).groth16().await
-        }
-    }
-    .map_err(|e| eyre::eyre!("Proof generation failed: {}", e))?;
+    println!("Generating Groth16 proof...");
+    let proof = client
+        .prove(&pk, stdin)
+        .groth16()
+        .await
+        .map_err(|e| eyre::eyre!("Proof generation failed: {}", e))?;
 
     if prover_mode == "network" {
         println!("\n✅ EVM-compatible proof generated successfully using Succinct Prover Network!");
@@ -284,12 +266,7 @@ async fn main() -> Result<()> {
         println!("✅ EVM-compatible proof generated successfully locally!");
     }
 
-    create_proof_fixture(
-        &proof,
-        pk.verifying_key(),
-        args.system,
-        args.output_path.as_deref(),
-    )?;
+    create_proof_fixture(&proof, pk.verifying_key(), args.output_path.as_deref())?;
 
     Ok(())
 }
@@ -298,7 +275,6 @@ async fn main() -> Result<()> {
 fn create_proof_fixture(
     proof: &sp1_sdk::SP1ProofWithPublicValues,
     vk: &sp1_sdk::SP1VerifyingKey,
-    system: ProofSystem,
     output_path: Option<&std::path::Path>,
 ) -> Result<()> {
     let fixture = fixture_from_proof(proof, vk)?;
@@ -329,7 +305,7 @@ fn create_proof_fixture(
     // Save the fixture to a file.
     let fixture_file_path = output_path
         .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| default_fixture_output_path(&format!("{:?}", system).to_lowercase()));
+        .unwrap_or_else(|| default_fixture_output_path("groth16"));
     std::fs::create_dir_all(
         fixture_file_path
             .parent()

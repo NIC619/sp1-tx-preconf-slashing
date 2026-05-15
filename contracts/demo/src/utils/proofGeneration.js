@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 
-// Real proof data from Succinct prover network
+// Stable proof data from Succinct prover network for the fixed demo scenario.
+// Regenerate the full fixture before using it with a newly deployed PROGRAM_VKEY.
 export const PROOF_FIXTURE = {
   "blockHash": "0xc936613ff8e7fb04ed39ef9e25417f779b187d449b04c7ade75917ff33166021",
   "blockNumber": 23354683,

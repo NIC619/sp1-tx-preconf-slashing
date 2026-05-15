@@ -142,7 +142,7 @@ fi
 if [ "$CONTRACT" = "verifier" ]; then
     if [ -z "$SP1_VERIFIER_ADDRESS" ]; then
         echo "Error: SP1_VERIFIER_ADDRESS environment variable is required for verifier deployment"
-        echo "For Sepolia testnet: export SP1_VERIFIER_ADDRESS=0x397A5f7f3dBd538f23DE225B51f532c34448dA9B"
+        echo "For Sepolia Groth16 gateway: export SP1_VERIFIER_ADDRESS=0x397A5f7f3dBd538f23DE225B51f532c34448dA9B"
         exit 1
     fi
 

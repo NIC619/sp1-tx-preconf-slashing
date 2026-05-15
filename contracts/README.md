@@ -28,8 +28,9 @@ Required for deployment:
 DEPLOYER_PRIVATE_KEY=0x...
 OWNER_PRIVATE_KEY=0x...
 ETHERSCAN_API_KEY=...
+# Sepolia Groth16 verifier gateway; routes v6.1.x proofs with sp1-contracts v6.1.1.
 SP1_VERIFIER_ADDRESS=0x397A5f7f3dBd538f23DE225B51f532c34448dA9B
-TX_INCLUSION_PROGRAM_VKEY=0x00a1bde4932d9b0fdf65b292dba44b3b23131b5d925592a06fe17735e3d49769
+TX_INCLUSION_PROGRAM_VKEY=0x00ef99aa9ca5343648ec4bf880180e8f9a05d8be759659925cec813035acf507
 ```
 
 `DEPLOYER_PRIVATE_KEY` pays deployment gas. `OWNER_PRIVATE_KEY` determines the owner address passed to the verifier and slasher constructors.
@@ -46,8 +47,9 @@ Useful focused runs:
 ```sh
 forge test --match-contract TxInclusionPreciseSlasherTest
 forge test --match-contract TransactionInclusionGroth16Test
-forge test --match-contract TransactionInclusionPlonkTest
 ```
+
+PLONK proofs are not supported by this repo. Use Groth16 fixtures and the Groth16 verifier gateway.
 
 ## Deploy
 

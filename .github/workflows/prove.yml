@@ -59,8 +59,7 @@ jobs:
       - name: Run Rust tests
         run: cargo test -p tx-inclusion-precise-index -p tx-inclusion-precise-index-lib
 
-      - name: Execute SP1 program
+      - name: Check SP1 verification key
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         run: |
-          cd script
-          cargo run --release -- --execute
+          cargo run --release --bin vkey

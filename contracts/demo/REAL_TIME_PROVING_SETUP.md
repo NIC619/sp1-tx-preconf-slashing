@@ -173,12 +173,11 @@ REACT_APP_BACKEND_URL=http://localhost:3001  # Backend URL
 
 ### Proof Generation Settings
 
-Modify `demo/backend/server.js` to customize:
+The demo backend supports Groth16 proofs only. PLONK is intentionally unsupported by this repo.
 
 ```javascript
 // In the /api/generate-proof endpoint
 const args = [
-  '--system', proofSystem,           // 'groth16' or 'plonk'
   '--eth-rpc-url', 'https://...',    // Ethereum RPC URL
 ];
 ```
@@ -214,12 +213,11 @@ node server.js  # Start with detailed logs
 ```bash
 # Test Rust binary directly with default transaction
 cd ../script
-SP1_PROVER=network NETWORK_PRIVATE_KEY=0x... cargo run --release --bin evm -- --system groth16
+SP1_PROVER=network NETWORK_PRIVATE_KEY=0x... cargo run --release --bin evm
 
 # Test Rust binary with custom transaction
 cd ../script
 SP1_PROVER=network NETWORK_PRIVATE_KEY=0x... cargo run --release --bin evm -- \
-  --system groth16 \
   --transaction-hash 0xd25efc79e658a77d3a136a674c04be15a1d2dfc2a695412028a9e51f5c1ee900
 
 # Test backend API

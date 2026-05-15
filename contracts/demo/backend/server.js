@@ -342,6 +342,12 @@ app.post('/api/generate-proof', async (req, res) => {
     const isAbsenceProof = violationType && violationType !== 'DIFFERENT_TRANSACTION';
     const commitmentHash = committedTransactionHash || transactionHash;
 
+    if (proofSystem !== 'groth16') {
+      return res.status(400).json({
+        error: 'Unsupported proof system. This repo supports Groth16 only.'
+      });
+    }
+
     // Validate input
     if (!blockNumber || transactionIndex === undefined || (!isAbsenceProof && !transactionHash) || !commitmentHash) {
       return res.status(400).json({
@@ -360,7 +366,6 @@ app.post('/api/generate-proof', async (req, res) => {
 
     // Build command arguments
     const args = [
-      '--system', proofSystem,
       '--eth-rpc-url', getNetwork(chainId).rpcUrl
     ];
     if (isAbsenceProof) {
@@ -426,7 +431,7 @@ app.post('/api/generate-proof', async (req, res) => {
     // Try to read the generated fixture file
     let fixture = null;
     try {
-      const fixturePath = path.join(__dirname, '../../../contracts/src/fixtures', `${proofSystem}-fixture.json`);
+      const fixturePath = path.join(__dirname, '../../../contracts/src/fixtures/groth16-fixture.json');
       const fixtureContent = await fs.readFile(fixturePath, 'utf8');
       fixture = JSON.parse(fixtureContent);
     } catch (fixtureError) {
